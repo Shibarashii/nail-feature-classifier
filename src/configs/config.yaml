@@ -1,0 +1,25 @@
+description: "Universal configuration"
+
+# ----------------------------
+# Global Hyperparameters
+# ----------------------------
+defaults:
+  batch_size: 32
+  num_epochs: 50
+  loss_function: cross_entropy
+  optimizer: adamw
+  lr: 1e-4
+  seed: 42
+
+# ----------------------------
+# Scheduler
+# ----------------------------
+scheduler: ReduceLROnPlateau
+scheduler_params:
+  mode: min # Monitoring validation loss
+  factor: 0.5 # Halve the LR when triggered
+  patience: 4 # Wait 4 epochs without improvement (safer than 2)
+  verbose: true
+  threshold: 1e-4 # Minimum change to qualify as improvement
+  cooldown: 1 # Wait 1 epoch after a LR reduction before resuming normal checks
+  min_lr: 1e-6 # Optional: do not reduce LR below this

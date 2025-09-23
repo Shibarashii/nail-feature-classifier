@@ -7,31 +7,6 @@ strategy: freeze_head # Options: freeze_head, scratch, full_finetune, gradual_un
 description: "Baseline experiment: train only the classifier head while freezing the backbone."
 
 # ----------------------------
-# Global Hyperparameters
-# ----------------------------
-defaults:
-  batch_size: 32
-  num_epochs: 50
-  loss_function: cross_entropy
-  optimizer: adamw
-  lr: 1e-3
-  weight_decay: 0.0
-  device: cuda
-  seed: 42
-
-# ----------------------------
-# Scheduler
-# ----------------------------
-scheduler: ReduceLROnPlateau
-scheduler_params:
-  mode: min
-  factor: 0.5
-  patience: 2
-  verbose: true
-  threshold: 1e-4
-  cooldown: 0
-
-# ----------------------------
 # Models
 # ----------------------------
 models:

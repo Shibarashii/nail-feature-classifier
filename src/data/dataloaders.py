@@ -5,10 +5,16 @@ from pathlib import Path
 
 
 NUM_WORKERS = os.cpu_count()
+ROOT_DIR = Path(__file__).resolve(
+).parent.parent.parent  # src/data -> root
+train_dir = ROOT_DIR / "data" / "Nail Classification" / "train"
+val_dir = ROOT_DIR / "data" / "Nail Classification" / "valid"
+test_dir = ROOT_DIR / "data" / "Nail Classification" / "test"
 
 
 def create_dataloaders(
-    transform: transforms.Compose,
+    train_transform: transforms.Compose,
+    test_transform: transforms.Compose,
     batch_size: int,
     num_workers: int = NUM_WORKERS
 ):
@@ -18,7 +24,8 @@ def create_dataloaders(
     them into PyTorch Datasets and then into PyTorch DataLoaders.
 
     Args:
-      transform: torchvision transforms to perform on training and testing data.
+      train_transform: torchvision transforms to perform on training data.
+      test_transform: torchvision transforms to perform on validation and testing data.
       batch_size: Number of samples per batch in each of the DataLoaders.
       num_workers: An integer for number of workers per DataLoader.
 
@@ -26,21 +33,17 @@ def create_dataloaders(
       A tuple of (train_dataloader, val_dataloader, test_dataloader, class_names, class_to_idx, num_classes).
       Where class_names is a list of the target classes.
       Example usage:
-        train_dataloader, test_dataloader, class_names, class_to_idx, num_classes = \
-          = create_dataloaders(transform=some_transform,
-                               batch_size=32,
-                               num_workers=4)
+        train_dataloader, val_dataloader, test_dataloader, class_names, class_to_idx, num_classes = \
+          = create_dataloaders(train_transform=some_transform,
+                            test_transform=some_other_transform,
+                            batch_size=32,
+                            num_workers=4)
     """
-    ROOT_DIR = Path(__file__).resolve(
-    ).parent.parent.parent  # src/data -> root
-    train_dir = ROOT_DIR / "data" / "train"
-    val_dir = ROOT_DIR / "data" / "val"
-    test_dir = ROOT_DIR / "data" / "test"
 
     # Turn image data into datasets
-    train_data = datasets.ImageFolder(train_dir, transform=transform)
-    val_data = datasets.ImageFolder(val_dir, transform=transform)
-    test_data = datasets.ImageFolder(test_dir, transform=transform)
+    train_data = datasets.ImageFolder(train_dir, transform=train_transform)
+    val_data = datasets.ImageFolder(val_dir, transform=test_transform)
+    test_data = datasets.ImageFolder(test_dir, transform=test_transform)
 
     # Get class names
     class_names = train_data.classes

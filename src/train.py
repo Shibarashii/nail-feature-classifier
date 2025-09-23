@@ -1,53 +1,80 @@
+# src/experiments.py
+import numpy as np
 import os
 import torch
-from src import data_setup, engine, model_builder, utils
-from torchvision import transforms
+from utils.class_weight import get_class_weight
+from utils.helpers import get_root_dir
+import yaml
+from models.efficientnetv2s import get_from_scratch_model as efficientnetv2s_scratch
+from models.efficientnetv2s import get_baseline_model as efficientnetv2s_baseline
+from models.efficientnetv2s import get_full_finetune_model as efficientnetv2s_full
+from models.efficientnetv2s import get_gradual_unfreeze_model as efficientnetv2s_gradual
+from data.dataloaders import create_dataloaders
+from data.transforms import get_train_transforms, get_test_transforms
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+import torch.nn as nn
+from engine import train_model
+import argparse
+from models.efficientnetv2s import get_baseline_model as efficientnetv2s_baseline
+from models.get_model import get_model
 
-# Setup hyperparameters
-NUM_EPOCHS = 25
-BATCH_SIZE = 32
-HIDDEN_UNITS = 10
-LEARNING_RATE = 1e-4
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# Setup target device
-device = "cuda" if torch.cuda.is_available() else "cpu"
+# Load YAML config
+config_path = get_root_dir() / "configs" / "config.yaml"
+with open(config_path, "r") as f:
+    config = yaml.safe_load(f)
 
-# Create transforms
-data_transform = transforms.Compose([
-    transforms.Resize((64, 64)),
-    transforms.ToTensor()
-])
+# Hyperparameters
+SEED = config["defaults"]["seed"]
+NUM_EPOCHS = config["defaults"]["num_epochs"]
+BATCH_SIZE = config["defaults"]["batch_size"]
+LEARNING_RATE = config["defaults"]["lr"]
 
-# Create DataLoaders with help from data_setup.py
-train_dataloader, test_dataloader, class_names = data_setup.create_dataloaders(
-    train_dir=train_dir,
-    test_dir=test_dir,
-    transform=data_transform,
-    batch_size=BATCH_SIZE
-)
 
-# Create model with help from model_builder.py
-model = model_builder.TinyVGG(
-    input_shape=3,
-    hidden_units=HIDDEN_UNITS,
-    output_shape=len(class_names)
-).to(device)
+train_loader, val_loader, test_loader, class_names, class_to_idx, num_classes = create_dataloaders(
+    transform=get_train_transforms(),
+    batch_size=BATCH_SIZE,
+    num_workers=os.cpu_count())
 
-# Set loss and optimizer
-loss_fn = torch.nn.CrossEntropyLoss()
-optimizer = torch.optim.Adam(model.parameters(),
-                             lr=LEARNING_RATE)
 
-# Start training with help from engine.py
-engine.train(model=model,
-             train_dataloader=train_dataloader,
-             test_dataloader=test_dataloader,
-             loss_fn=loss_fn,
-             optimizer=optimizer,
-             epochs=NUM_EPOCHS,
-             device=device)
+def run_model(model: nn.Module, device: torch.device):
+    model = model.to(device)
 
-# Save the model with help from utils.py
-utils.save_model(model=model,
-                 target_dir="models",
-                 model_name="05_going_modular_script_mode_tinyvgg_model.pth")
+    # Loss, optimizer, scheduler
+    CRITERION = torch.nn.CrossEntropyLoss(get_class_weight(device=device))
+    optimizer = torch.optim.AdamW(
+        # only trainable params
+        filter(lambda p: p.requires_grad, model.parameters()),
+        lr=LEARNING_RATE,
+    )
+
+    scheduler_params = config.get("scheduler_params", {})
+    scheduler = ReduceLROnPlateau(optimizer, **scheduler_params)
+
+    best_model, history = train_model(model=model,
+                                      train_loader=train_loader,
+                                      val_loader=val_loader,
+                                      criterion=CRITERION,
+                                      optimizer=optimizer,
+                                      scheduler=scheduler,
+                                      device=device,
+                                      num_epochs=NUM_EPOCHS,
+                                      patience=5,
+                                      print_summary=True)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Train a model with a given strategy")
+    parser.add_argument("--model", type=str, required=True,
+                        help="Model name (efficientnetv2s, resnet50, etc.)")
+    parser.add_argument("--strategy", type=str, required=True,
+                        help="Training strategy (scratch, baseline, full_finetune, gradual_unfreeze)")
+    args = parser.parse_args()
+
+    # Get model based on CLI args
+    model = get_model(args.model, args.strategy, num_classes=num_classes)
+
+    # Run training
+    run_model(model, device)

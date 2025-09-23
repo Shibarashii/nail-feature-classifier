@@ -26,6 +26,10 @@ from pytorch_grad_cam.utils.image import show_cam_on_image
 from collections import Counter
 
 
+def get_root_dir():
+    return Path(__file__).resolve().parent.parent.parent  # src/utils -> root
+
+
 def get_class_distribution(dataset, subset_name):
     if isinstance(dataset, Subset):
         # Access the underlying dataset's targets using indices

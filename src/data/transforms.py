@@ -10,7 +10,7 @@ def get_train_transforms(img_size=224):
     ])
 
 
-def get_val_transforms(img_size=224):
+def get_test_transforms(img_size=224):
     return T.Compose([
         T.Resize((img_size, img_size)),
         T.ToTensor(),

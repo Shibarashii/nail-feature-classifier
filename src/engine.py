@@ -66,6 +66,52 @@ def train_model(
     patience: int = 5,         # Early stopping patience
     print_summary: bool = True
 ):
+    """
+    Train a PyTorch model with early stopping and learning rate scheduling.
+
+    Parameters
+    ----------
+    model : nn.Module
+        The PyTorch model to be trained.
+    train_loader : DataLoader
+        DataLoader for the training dataset.
+    val_loader : DataLoader
+        DataLoader for the validation dataset.
+    criterion : nn.Module
+        Loss function (e.g., nn.CrossEntropyLoss).
+    optimizer : torch.optim.Optimizer
+        Optimizer for updating model parameters (e.g., AdamW, SGD).
+    scheduler : torch.optim.lr_scheduler.ReduceLROnPlateau
+        Learning rate scheduler that reduces LR when a metric has stopped improving.
+    device : torch.device
+        Device to train the model on (`cuda` or `cpu`).
+    num_epochs : int, optional
+        Maximum number of training epochs (default is 50).
+    patience : int, optional
+        Number of epochs with no improvement on validation loss before early stopping (default is 5).
+    print_summary : bool, optional
+        Whether to print a model summary before training starts (default is True).
+
+    Returns
+    -------
+    model : nn.Module
+        The trained PyTorch model with the best validation loss.
+    history : list of dict
+        List containing metrics for each epoch, including:
+        - 'epoch': Epoch number
+        - 'train_loss': Training loss
+        - 'train_acc': Training accuracy
+        - 'val_loss': Validation loss
+        - 'val_acc': Validation accuracy
+        - 'lr': Current learning rate
+        - 'time': Epoch duration in seconds
+
+    Notes
+    -----
+    - Early stopping is triggered if the validation loss does not improve for `patience` consecutive epochs.
+    - The best model (lowest validation loss) is saved to "best_model.pth".
+    - The learning rate scheduler is stepped after each validation epoch using the current validation loss.
+    """
     if print_summary:
         sample_input, _ = next(iter(train_loader))
         summary(model, input_size=sample_input.shape[1:], device=str(device))
