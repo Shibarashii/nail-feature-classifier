@@ -1,0 +1,6 @@
+path: /home/shiba/Programming/nail-disease-classifier/data_src/YOLO
+train: images/train
+val: images/valid
+test: images/test
+nc: 1
+names: ["nail"]
