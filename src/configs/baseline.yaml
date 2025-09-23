@@ -1,0 +1,69 @@
+# configs/training/baseline.yaml
+
+# ----------------------------
+# Experiment Strategy
+# ----------------------------
+strategy: freeze_head # Options: freeze_head, scratch, full_finetune, gradual_unfreeze
+description: "Baseline experiment: train only the classifier head while freezing the backbone."
+
+# ----------------------------
+# Global Hyperparameters
+# ----------------------------
+defaults:
+  batch_size: 32
+  num_epochs: 50
+  loss_function: cross_entropy
+  optimizer: adamw
+  lr: 1e-3
+  weight_decay: 0.0
+  device: cuda
+  seed: 42
+
+# ----------------------------
+# Scheduler
+# ----------------------------
+scheduler: ReduceLROnPlateau
+scheduler_params:
+  mode: min
+  factor: 0.5
+  patience: 2
+  verbose: true
+  threshold: 1e-4
+  cooldown: 0
+
+# ----------------------------
+# Models
+# ----------------------------
+models:
+  efficientnetv2s:
+    pretrained: true
+    save_model_dir: saved_models/efficientnetv2s/baseline
+    save_history_filename: history.json
+
+  swinv2t:
+    pretrained: true
+    save_model_dir: saved_models/swinv2t/baseline
+    save_history_filename: history.json
+
+  resnet50:
+    pretrained: true
+    save_model_dir: saved_models/resnet50/baseline
+    save_history_filename: history.json
+
+  vgg16:
+    pretrained: true
+    save_model_dir: saved_models/vgg16/baseline
+    save_history_filename: history.json
+
+  regnety16gf:
+    pretrained: true
+    save_model_dir: saved_models/regnety16gf/baseline
+    save_history_filename: history.json
+
+# ----------------------------
+# Logging / Checkpoints
+# ----------------------------
+logging:
+  print_every_batches: 50
+  save_checkpoint_every_epoch: true
+  checkpoint_dir: checkpoints/
