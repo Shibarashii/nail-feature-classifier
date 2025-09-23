@@ -1,123 +1,53 @@
-import argparse
+import os
 import torch
-import torch.nn as nn
-from torchmetrics.classification import MulticlassAccuracy
+from src import data_setup, engine, model_builder, utils
+from torchvision import transforms
 
-from utils.helpers import train_model, save_results
+# Setup hyperparameters
+NUM_EPOCHS = 25
+BATCH_SIZE = 32
+HIDDEN_UNITS = 10
+LEARNING_RATE = 1e-4
 
-# Import modular functions
-from utils.data_utils import create_dataloaders
-from transforms import train_transforms, val_test_transforms
-import torchvision.models as models
+# Setup target device
+device = "cuda" if torch.cuda.is_available() else "cpu"
 
-# ------------------------------
-# 1. Argument Parser
-# ------------------------------
+# Create transforms
+data_transform = transforms.Compose([
+    transforms.Resize((64, 64)),
+    transforms.ToTensor()
+])
 
+# Create DataLoaders with help from data_setup.py
+train_dataloader, test_dataloader, class_names = data_setup.create_dataloaders(
+    train_dir=train_dir,
+    test_dir=test_dir,
+    transform=data_transform,
+    batch_size=BATCH_SIZE
+)
 
-def parse_args():
-    parser = argparse.ArgumentParser(
-        description="Train Nail Feature Classifier")
-    parser.add_argument("--model", type=str,
-                        default="efficientnetv2s", help="Model backbone")
-    parser.add_argument("--batch_size", type=int,
-                        default=32, help="Batch size")
-    parser.add_argument("--epochs", type=int, default=10,
-                        help="Number of epochs")
-    parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
-    parser.add_argument("--data_dir", type=str,
-                        default="data", help="Path to dataset")
-    parser.add_argument("--output_dir", type=str,
-                        default="outputs", help="Where to save results")
-    return parser.parse_args()
+# Create model with help from model_builder.py
+model = model_builder.TinyVGG(
+    input_shape=3,
+    hidden_units=HIDDEN_UNITS,
+    output_shape=len(class_names)
+).to(device)
 
-# ------------------------------
-# 2. Model Factory
-# ------------------------------
+# Set loss and optimizer
+loss_fn = torch.nn.CrossEntropyLoss()
+optimizer = torch.optim.Adam(model.parameters(),
+                             lr=LEARNING_RATE)
 
+# Start training with help from engine.py
+engine.train(model=model,
+             train_dataloader=train_dataloader,
+             test_dataloader=test_dataloader,
+             loss_fn=loss_fn,
+             optimizer=optimizer,
+             epochs=NUM_EPOCHS,
+             device=device)
 
-def build_model(model_name, num_classes):
-    if model_name == "efficientnetv2s":
-        weights = models.EfficientNet_V2_S_Weights.DEFAULT
-        model = models.efficientnet_v2_s(weights=weights)
-        model.classifier[1] = nn.Linear(
-            model.classifier[1].in_features, num_classes)
-
-    elif model_name == "resnet50":
-        weights = models.ResNet50_Weights.DEFAULT
-        model = models.resnet50(weights=weights)
-        model.fc = nn.Linear(model.fc.in_features, num_classes)
-
-    elif model_name == "vgg16":
-        weights = models.VGG16_Weights.DEFAULT
-        model = models.vgg16(weights=weights)
-        model.classifier[6] = nn.Linear(
-            model.classifier[6].in_features, num_classes)
-
-    else:
-        raise ValueError(f"Model {model_name} not supported")
-
-    return model
-
-# ------------------------------
-# 3. Main Training Script
-# ------------------------------
-
-
-def main():
-    args = parse_args()
-
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    torch.manual_seed(RANDOM_SEED)
-    torch.cuda.manual_seed(RANDOM_SEED)
-
-    # ------------------------------
-    # Get dataloaders using modular helper
-    # ------------------------------
-    train_loader, val_loader, test_loader, class_names = create_dataloaders(
-        data_dir=args.data_dir,
-        batch_size=args.batch_size,
-        train_transform=train_transforms,
-        val_transform=val_test_transforms,
-        test_transform=val_test_transforms
-    )
-    num_classes = len(class_names)
-
-    # ------------------------------
-    # Build model
-    # ------------------------------
-    model = build_model(args.model, num_classes).to(device)
-
-    # ------------------------------
-    # Training setup
-    # ------------------------------
-    criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode="min", patience=3, factor=0.5)
-    accuracy_fn = MulticlassAccuracy(num_classes=num_classes).to(device)
-
-    # ------------------------------
-    # Train the model
-    # ------------------------------
-    results = train_model(
-        epochs=args.epochs,
-        model=model,
-        train_dataloader=train_loader,
-        valid_dataloader=val_loader,
-        criterion=criterion,
-        optimizer=optimizer,
-        accuracy_fn=accuracy_fn,
-        device=device,
-        scheduler=scheduler
-    )
-
-    # ------------------------------
-    # Save results
-    # ------------------------------
-    save_results(args.output_dir, args.model, results)
-    print("Training complete!")
-
-
-if __name__ == "__main__":
-    main()
+# Save the model with help from utils.py
+utils.save_model(model=model,
+                 target_dir="models",
+                 model_name="05_going_modular_script_mode_tinyvgg_model.pth")
