@@ -67,7 +67,6 @@ def run_model(model: nn.Module, model_name: str, strategy: str):
         history=history,
         model_name=model_name,
         strategy=strategy,
-        num_epochs=NUM_EPOCHS
     )
 
 

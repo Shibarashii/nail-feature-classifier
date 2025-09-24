@@ -54,14 +54,13 @@ def save_experiment_outputs(
     history: dict,
     model_name: str,
     strategy: str,
-    num_epochs: int,
     base_dir: str = "output",
     use_timestamp: bool = True,
 ) -> Path:
     """Save the best model weights and training history."""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S") if use_timestamp else ""
     save_dir = get_root_dir() / "src" / base_dir / model_name / \
-        strategy / str(num_epochs)
+        strategy
 
     if use_timestamp:
         save_dir = save_dir / timestamp
