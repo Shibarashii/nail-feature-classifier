@@ -20,6 +20,27 @@ from src.models.regnety16gf import (
     get_gradual_unfreeze_model as regnety16gf_gradual
 )
 
+from src.models.resnet50 import (
+    get_from_scratch_model as resnet50_scratch,
+    get_baseline_model as resnet50_baseline,
+    get_full_finetune_model as resnet50_full,
+    get_gradual_unfreeze_model as resnet50_gradual
+)
+
+from src.models.vgg16 import (
+    get_from_scratch_model as vgg16_scratch,
+    get_baseline_model as vgg16_baseline,
+    get_full_finetune_model as vgg16_full,
+    get_gradual_unfreeze_model as vgg16_gradual
+)
+
+from src.models.swinv2t import (
+    get_from_scratch_model as swinv2t_scratch,
+    get_baseline_model as swinv2t_baseline,
+    get_full_finetune_model as swinv2t_full,
+    get_gradual_unfreeze_model as swinv2t_gradual
+)
+
 
 def get_model(model_name: str, strategy: str, num_classes: int):
     model_map = {
@@ -40,6 +61,24 @@ def get_model(model_name: str, strategy: str, num_classes: int):
             "baseline": regnety16gf_baseline,
             "full_finetune": regnety16gf_full,
             "gradual_unfreeze": regnety16gf_gradual
+        },
+        "resnet50": {
+            "scratch": resnet50_scratch,
+            "baseline": resnet50_baseline,
+            "full_finetune": resnet50_full,
+            "gradual_unfreeze": resnet50_gradual
+        },
+        "vgg16": {
+            "scratch": vgg16_scratch,
+            "baseline": vgg16_baseline,
+            "full_finetune": vgg16_full,
+            "gradual_unfreeze": vgg16_gradual
+        },
+        "swinv2t": {
+            "scratch": swinv2t_scratch,
+            "baseline": swinv2t_baseline,
+            "full_finetune": swinv2t_full,
+            "gradual_unfreeze": swinv2t_gradual
         }
     }
 
