@@ -5,9 +5,22 @@ from src.models.efficientnetv2s import (
     get_gradual_unfreeze_model as efficientnetv2s_gradual
 )
 
+from src.models.testnet import (
+    get_from_scratch_model as testnet_scratch,
+    get_baseline_model as testnet_baseline,
+    get_full_finetune_model as testnet_full,
+    get_gradual_unfreeze_model as testnet_gradual
+)
+
 
 def get_model(model_name: str, strategy: str, num_classes: int):
     model_map = {
+        "testnet": {
+            "scratch": testnet_scratch,
+            "baseline": testnet_baseline,
+            "full_finetune": testnet_full,
+            "gradual_unfreeze": testnet_gradual
+        },
         "efficientnetv2s": {
             "scratch": efficientnetv2s_scratch,
             "baseline": efficientnetv2s_baseline,
