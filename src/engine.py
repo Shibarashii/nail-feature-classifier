@@ -134,7 +134,7 @@ def train_model(
     epochs_no_improve = 0
     history = []
 
-    for epoch in tqdm(range(1, num_epochs + 1), leave=True):
+    for epoch in range(1, num_epochs + 1):
         start_time = time()
 
         # Train & validate
