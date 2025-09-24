@@ -23,6 +23,7 @@ nvidia-nvjitlink-cu12==12.8.93
 nvidia-nvtx-cu12==12.8.90
 packaging==25.0
 pillow==11.3.0
+PyYAML==6.0.2
 scikit-learn==1.7.2
 scipy==1.16.2
 setuptools==80.9.0
