@@ -57,7 +57,7 @@ def run_model(model: nn.Module, model_name: str, strategy: str):
         device=device,
         accuracy_fn=accuracy_fn,
         num_epochs=NUM_EPOCHS,
-        patience=5,
+        patience=EARLY_STOPPING_PATIENCE,
         print_summary=True
     )
 
@@ -95,8 +95,9 @@ if __name__ == "__main__":
     BATCH_SIZE = config["defaults"]["batch_size"]
     SEED = config["defaults"]["seed"]
     LEARNING_RATE = float(config["defaults"]["lr"])
+    EARLY_STOPPING_PATIENCE = config["defaults"].get(
+        "early_stopping_patience", 5)  # default to 5
 
-    # Determine if this is a test run based on config filename
     test_run = args.config.lower().startswith("test")
 
     set_seed(SEED)

@@ -10,6 +10,7 @@ defaults:
   optimizer: adamw
   lr: 0.001 # 1e-3
   seed: 42
+  early_stopping_patience: 10
 # ----------------------------
 # Scheduler Hyperparameters
 # ----------------------------
