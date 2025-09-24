@@ -15,28 +15,6 @@ from src.utils.seed import set_seed
 from src.utils.save import save_experiment_outputs
 from torchmetrics import Accuracy
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-# Load YAML config
-config_path = get_root_dir() / "src" / "configs" / "config.yaml"
-with open(config_path, "r") as f:
-    config = yaml.safe_load(f)
-
-# Hyperparameters
-NUM_EPOCHS = config["defaults"]["num_epochs"]
-BATCH_SIZE = config["defaults"]["batch_size"]
-SEED = config["defaults"]["seed"]
-LEARNING_RATE = float(config["defaults"]["lr"])
-
-set_seed(SEED)
-
-# DATALOADERS
-train_loader, val_loader, test_loader, class_names, class_to_idx, num_classes = create_dataloaders(
-    train_transform=get_train_transforms(),
-    test_transform=get_test_transforms(),
-    batch_size=BATCH_SIZE,
-    num_workers=os.cpu_count())
-
 
 def run_model(model: nn.Module, model_name: str, strategy: str):
     """
@@ -95,12 +73,42 @@ def run_model(model: nn.Module, model_name: str, strategy: str):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Train a model with a given strategy")
+        description="Train a model with a given strategy"
+    )
     parser.add_argument("--model", type=str, required=True,
                         help="Model name (efficientnetv2s, resnet50, etc.)")
     parser.add_argument("--strategy", type=str, required=True,
                         help="Training strategy (scratch, baseline, full_finetune, gradual_unfreeze)")
+    parser.add_argument("--config", type=str, default="config.yaml",
+                        help="YAML config file to use (default: config.yaml)")
+
     args = parser.parse_args()
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # Load YAML config
+    config_path = get_root_dir() / "src" / "configs" / args.config
+    with open(config_path, "r") as f:
+        config = yaml.safe_load(f)
+
+    # Hyperparameters from config
+    NUM_EPOCHS = config["defaults"]["num_epochs"]
+    BATCH_SIZE = config["defaults"]["batch_size"]
+    SEED = config["defaults"]["seed"]
+    LEARNING_RATE = float(config["defaults"]["lr"])
+
+    # Determine if this is a test run based on config filename
+    test_run = args.config.lower().startswith("test")
+
+    set_seed(SEED)
+
+    train_loader, val_loader, test_loader, class_names, class_to_idx, num_classes = create_dataloaders(
+        train_transform=get_train_transforms(test_run=test_run),
+        test_transform=get_test_transforms(test_run=test_run),
+        batch_size=BATCH_SIZE,
+        num_workers=os.cpu_count(),
+        test_run=test_run
+    )
 
     # Get model based on CLI args
     model = get_model(args.model, args.strategy, num_classes=num_classes)
