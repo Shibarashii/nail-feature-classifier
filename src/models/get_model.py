@@ -1,3 +1,4 @@
+# src/models/get_model.py
 from src.models.efficientnetv2s import (
     get_from_scratch_model as efficientnetv2s_scratch,
     get_baseline_model as efficientnetv2s_baseline,
