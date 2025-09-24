@@ -4,54 +4,74 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from time import time
 from torchsummary import summary
+from typing import Tuple
+from torchmetrics import Metric
 
 
-def train_step(model, dataloader, criterion, optimizer, device):
+def train_step(
+    model: nn.Module,
+    data_loader: DataLoader,
+    criterion: nn.Module,
+    optimizer: optim.Optimizer,
+    accuracy_fn: Metric,
+    device: torch.device,
+    log_interval: int = 10,
+) -> Tuple[float, float]:
+    """Training step."""
+
     model.train()
-    running_loss = 0.0
-    correct = 0
-    total = 0
+    running_loss, running_acc = 0.0, 0.0
 
-    for images, labels in dataloader:
-        images, labels = images.to(device), labels.to(device)
+    for batch_idx, (inputs, targets) in enumerate(data_loader):
+        inputs, targets = inputs.to(device), targets.to(device)
 
+        # Forward pass
+        outputs = model(inputs)
+        loss = criterion(outputs, targets)
+
+        # Backward pass
         optimizer.zero_grad()
-        outputs = model(images)
-        loss = criterion(outputs, labels)
         loss.backward()
         optimizer.step()
 
-        running_loss += loss.item() * images.size(0)
-        _, preds = torch.max(outputs, 1)
-        correct += (preds == labels).sum().item()
-        total += labels.size(0)
+        # Accumulate metrics
+        running_loss += loss.item()
+        running_acc += accuracy_fn(targets, outputs.argmax(dim=1))
 
-    epoch_loss = running_loss / total
-    epoch_acc = correct / total
-    return epoch_loss, epoch_acc
+        if (batch_idx + 1) % log_interval == 0:
+            seen = (batch_idx + 1) * data_loader.batch_size
+            print(f"Training: Seen {seen}/{len(data_loader.dataset)} samples")
+
+    avg_loss = running_loss / len(data_loader)
+    avg_acc = running_acc / len(data_loader)
+    return avg_loss, avg_acc
 
 
-def val_step(model, dataloader, criterion, device):
+def val_step(
+    model: nn.Module,
+    data_loader: DataLoader,
+    criterion: nn.Module,
+    accuracy_fn: Metric,
+    device: torch.device,
+) -> Tuple[float, float]:
+    """Evaluates the model on the validation set."""
+
     model.eval()
-    running_loss = 0.0
-    correct = 0
-    total = 0
+    running_loss, running_acc = 0.0, 0.0
 
-    with torch.no_grad():
-        for images, labels in dataloader:
-            images, labels = images.to(device), labels.to(device)
+    with torch.inference_mode():
+        for inputs, targets in data_loader:
+            inputs, targets = inputs.to(device), targets.to(device)
 
-            outputs = model(images)
-            loss = criterion(outputs, labels)
+            outputs = model(inputs)
+            loss = criterion(outputs, targets)
 
-            running_loss += loss.item() * images.size(0)
-            _, preds = torch.max(outputs, 1)
-            correct += (preds == labels).sum().item()
-            total += labels.size(0)
+            running_loss += loss.item()
+            running_acc += accuracy_fn(targets, outputs.argmax(dim=1))
 
-    epoch_loss = running_loss / total
-    epoch_acc = correct / total
-    return epoch_loss, epoch_acc
+    avg_loss = running_loss / len(data_loader)
+    avg_acc = running_acc / len(data_loader)
+    return avg_loss, avg_acc
 
 
 def train_model(
