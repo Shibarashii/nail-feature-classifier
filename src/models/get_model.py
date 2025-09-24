@@ -1,30 +1,9 @@
 # src/models/get_model.py
-from src.models.efficientnetv2s import (
-    get_from_scratch_model as efficientnetv2s_scratch,
-    get_baseline_model as efficientnetv2s_baseline,
-    get_full_finetune_model as efficientnetv2s_full,
-    get_gradual_unfreeze_model as efficientnetv2s_gradual
-)
-
 from src.models.testnet import (
     get_from_scratch_model as testnet_scratch,
     get_baseline_model as testnet_baseline,
     get_full_finetune_model as testnet_full,
     get_gradual_unfreeze_model as testnet_gradual
-)
-
-from src.models.regnety16gf import (
-    get_from_scratch_model as regnety16gf_scratch,
-    get_baseline_model as regnety16gf_baseline,
-    get_full_finetune_model as regnety16gf_full,
-    get_gradual_unfreeze_model as regnety16gf_gradual
-)
-
-from src.models.resnet50 import (
-    get_from_scratch_model as resnet50_scratch,
-    get_baseline_model as resnet50_baseline,
-    get_full_finetune_model as resnet50_full,
-    get_gradual_unfreeze_model as resnet50_gradual
 )
 
 from src.models.vgg16 import (
@@ -34,6 +13,26 @@ from src.models.vgg16 import (
     get_gradual_unfreeze_model as vgg16_gradual
 )
 
+from src.models.resnet50 import (
+    get_from_scratch_model as resnet50_scratch,
+    get_baseline_model as resnet50_baseline,
+    get_full_finetune_model as resnet50_full,
+    get_gradual_unfreeze_model as resnet50_gradual
+)
+
+from src.models.regnety16gf import (
+    get_from_scratch_model as regnety16gf_scratch,
+    get_baseline_model as regnety16gf_baseline,
+    get_full_finetune_model as regnety16gf_full,
+    get_gradual_unfreeze_model as regnety16gf_gradual
+)
+
+from src.models.efficientnetv2s import (
+    get_from_scratch_model as efficientnetv2s_scratch,
+    get_baseline_model as efficientnetv2s_baseline,
+    get_full_finetune_model as efficientnetv2s_full,
+    get_gradual_unfreeze_model as efficientnetv2s_gradual
+)
 from src.models.swinv2t import (
     get_from_scratch_model as swinv2t_scratch,
     get_baseline_model as swinv2t_baseline,
@@ -50,17 +49,11 @@ def get_model(model_name: str, strategy: str, num_classes: int):
             "full_finetune": testnet_full,
             "gradual_unfreeze": testnet_gradual
         },
-        "efficientnetv2s": {
-            "scratch": efficientnetv2s_scratch,
-            "baseline": efficientnetv2s_baseline,
-            "full_finetune": efficientnetv2s_full,
-            "gradual_unfreeze": efficientnetv2s_gradual
-        },
-        "regnety16gf": {
-            "scratch": regnety16gf_scratch,
-            "baseline": regnety16gf_baseline,
-            "full_finetune": regnety16gf_full,
-            "gradual_unfreeze": regnety16gf_gradual
+        "vgg16": {
+            "scratch": vgg16_scratch,
+            "baseline": vgg16_baseline,
+            "full_finetune": vgg16_full,
+            "gradual_unfreeze": vgg16_gradual
         },
         "resnet50": {
             "scratch": resnet50_scratch,
@@ -68,11 +61,17 @@ def get_model(model_name: str, strategy: str, num_classes: int):
             "full_finetune": resnet50_full,
             "gradual_unfreeze": resnet50_gradual
         },
-        "vgg16": {
-            "scratch": vgg16_scratch,
-            "baseline": vgg16_baseline,
-            "full_finetune": vgg16_full,
-            "gradual_unfreeze": vgg16_gradual
+        "regnety16gf": {
+            "scratch": regnety16gf_scratch,
+            "baseline": regnety16gf_baseline,
+            "full_finetune": regnety16gf_full,
+            "gradual_unfreeze": regnety16gf_gradual
+        },
+        "efficientnetv2s": {
+            "scratch": efficientnetv2s_scratch,
+            "baseline": efficientnetv2s_baseline,
+            "full_finetune": efficientnetv2s_full,
+            "gradual_unfreeze": efficientnetv2s_gradual
         },
         "swinv2t": {
             "scratch": swinv2t_scratch,
