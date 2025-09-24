@@ -13,6 +13,13 @@ from src.models.testnet import (
     get_gradual_unfreeze_model as testnet_gradual
 )
 
+from src.models.regnety16gf import (
+    get_from_scratch_model as regnety16gf_scratch,
+    get_baseline_model as regnety16gf_baseline,
+    get_full_finetune_model as regnety16gf_full,
+    get_gradual_unfreeze_model as regnety16gf_gradual
+)
+
 
 def get_model(model_name: str, strategy: str, num_classes: int):
     model_map = {
@@ -28,6 +35,12 @@ def get_model(model_name: str, strategy: str, num_classes: int):
             "full_finetune": efficientnetv2s_full,
             "gradual_unfreeze": efficientnetv2s_gradual
         },
+        "regnety16gf": {
+            "scratch": regnety16gf_scratch,
+            "baseline": regnety16gf_baseline,
+            "full_finetune": regnety16gf_full,
+            "gradual_unfreeze": regnety16gf_gradual
+        }
     }
 
     if model_name not in model_map:
