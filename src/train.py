@@ -1,4 +1,4 @@
-# src/experiments.py
+# src/train.py
 import os
 import torch
 from src.utils.class_weight import get_class_weight

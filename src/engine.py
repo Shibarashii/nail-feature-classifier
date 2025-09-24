@@ -1,3 +1,4 @@
+# src/engine.py
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -176,7 +177,6 @@ def train_model(
         # Save best model and reset patience counter
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-            torch.save(model.state_dict(), "best_model.pth")
             epochs_no_improve = 0
         else:
             epochs_no_improve += 1
