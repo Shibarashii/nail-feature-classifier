@@ -13,6 +13,7 @@ import argparse
 from src.models.get_model import get_model
 from src.utils.seed import set_seed
 from src.utils.save import save_experiment_outputs
+from torchmetrics import Accuracy
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -62,6 +63,8 @@ def run_model(model: nn.Module, model_name: str, strategy: str):
         lr=LEARNING_RATE
     )
 
+    accuracy_fn = Accuracy(
+        task='multiclass', num_classes=num_classes).to(device)
     scheduler_params = config.get("scheduler_params", {})
     scheduler = ReduceLROnPlateau(optimizer, **scheduler_params)
 
@@ -74,6 +77,7 @@ def run_model(model: nn.Module, model_name: str, strategy: str):
         optimizer=optimizer,
         scheduler=scheduler,
         device=device,
+        accuracy_fn=accuracy_fn,
         num_epochs=NUM_EPOCHS,
         patience=5,
         print_summary=True

@@ -82,6 +82,7 @@ def train_model(
     optimizer: optim.Optimizer,
     scheduler: optim.lr_scheduler.ReduceLROnPlateau,
     device: torch.device,
+    accuracy_fn: Metric,
     num_epochs: int = 50,
     patience: int = 5,         # Early stopping patience
     print_summary: bool = True
@@ -145,8 +146,9 @@ def train_model(
 
         # Train & validate
         train_loss, train_acc = train_step(
-            model, train_loader, criterion, optimizer, device)
-        val_loss, val_acc = val_step(model, val_loader, criterion, device)
+            model, train_loader, criterion, optimizer, accuracy_fn, device)
+        val_loss, val_acc = val_step(
+            model, val_loader, criterion, accuracy_fn, device)
 
         # Scheduler step (Reduce LR if val_loss plateaus)
         scheduler.step(val_loss)

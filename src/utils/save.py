@@ -5,53 +5,36 @@ import torch
 from pathlib import Path
 
 
+def _tensor_to_python(obj):
+    """Recursively convert tensors to Python scalars so they're JSON serializable."""
+    if isinstance(obj, torch.Tensor):
+        return obj.item()
+    if isinstance(obj, dict):
+        return {k: _tensor_to_python(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_tensor_to_python(v) for v in obj]
+    return obj
+
+
 def save_model(model: torch.nn.Module,
                target_dir: str,
                model_name: str):
-    """Saves a PyTorch model to a target directory.
-
-    Args:
-      model: A target PyTorch model to save.
-      target_dir: A directory for saving the model to.
-      model_name: A filename for the saved model. Should include
-        either ".pth" or ".pt" as the file extension.
-
-    Example usage:
-      save_model(model=model_0,
-                 target_dir="models",
-                 model_name="05_going_modular_tingvgg_model.pth")
-    """
-    # Create target directory
+    """Saves a PyTorch model to a target directory."""
     target_dir_path = Path(target_dir)
-    target_dir_path.mkdir(parents=True,
-                          exist_ok=True)
+    target_dir_path.mkdir(parents=True, exist_ok=True)
 
-    # Create model save path
     assert model_name.endswith(".pth") or model_name.endswith(
         ".pt"), "model_name should end with '.pt' or '.pth'"
     model_save_path = target_dir_path / model_name
 
-    # Save the model state_dict()
     print(f"[INFO] Saving model to: {model_save_path}")
-    torch.save(obj=model.state_dict(),
-               f=model_save_path)
+    torch.save(obj=model.state_dict(), f=model_save_path)
 
 
 def save_history(history: list,
                  target_dir: str,
                  filename: str = "history.json"):
-    """Saves training history to a target directory as a JSON file.
-
-    Args:
-        history: A list of dictionaries containing epoch metrics.
-        target_dir: Directory where the history will be saved.
-        filename: Name of the JSON file (default "history.json").
-
-    Example usage:
-        save_history(history=history_list,
-                     target_dir="saved_models/efficientnetv2s/baseline",
-                     filename="history.json")
-    """
+    """Saves training history to a target directory as a JSON file."""
     target_dir_path = Path(target_dir)
     target_dir_path.mkdir(parents=True, exist_ok=True)
 
@@ -60,9 +43,10 @@ def save_history(history: list,
 
     history_save_path = target_dir_path / filename
 
+    safe_history = _tensor_to_python(history)
     print(f"[INFO] Saving history to: {history_save_path}")
     with open(history_save_path, "w") as f:
-        json.dump(history, f, indent=4)
+        json.dump(safe_history, f, indent=4)
 
 
 def save_experiment_outputs(
@@ -74,21 +58,7 @@ def save_experiment_outputs(
     base_dir: str = "outputs",
     use_timestamp: bool = True,
 ) -> Path:
-    """
-    Save the best model weights and training history.
-
-    Args:
-        best_model (torch.nn.Module): The trained model.
-        history (dict): Training history.
-        model_name (str): Name of the model.
-        strategy (str): Training strategy.
-        num_epochs (int): Number of epochs trained.
-        base_dir (str, optional): Base directory to save outputs. Defaults to "outputs".
-        use_timestamp (bool, optional): Whether to append a timestamp to the save dir.
-
-    Returns:
-        Path: Path to the save directory.
-    """
+    """Save the best model weights and training history."""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S") if use_timestamp else ""
     save_dir = get_root_dir() / base_dir / model_name / strategy / str(num_epochs)
 
@@ -104,8 +74,9 @@ def save_experiment_outputs(
 
     # Save training history
     history_path = save_dir / "history.json"
+    safe_history = _tensor_to_python(history)
     with open(history_path, "w") as f:
-        json.dump(history, f, indent=4)
+        json.dump(safe_history, f, indent=4)
     print(f"[INFO] Saved training history to {history_path}")
 
     return save_dir
