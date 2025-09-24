@@ -1,3 +1,5 @@
+from datetime import datetime
+from utils.helpers import get_root_dir
 import json
 import torch
 from pathlib import Path
@@ -61,3 +63,49 @@ def save_history(history: list,
     print(f"[INFO] Saving history to: {history_save_path}")
     with open(history_save_path, "w") as f:
         json.dump(history, f, indent=4)
+
+
+def save_experiment_outputs(
+    best_model: torch.nn.Module,
+    history: dict,
+    model_name: str,
+    strategy: str,
+    num_epochs: int,
+    base_dir: str = "outputs",
+    use_timestamp: bool = True,
+) -> Path:
+    """
+    Save the best model weights and training history.
+
+    Args:
+        best_model (torch.nn.Module): The trained model.
+        history (dict): Training history.
+        model_name (str): Name of the model.
+        strategy (str): Training strategy.
+        num_epochs (int): Number of epochs trained.
+        base_dir (str, optional): Base directory to save outputs. Defaults to "outputs".
+        use_timestamp (bool, optional): Whether to append a timestamp to the save dir.
+
+    Returns:
+        Path: Path to the save directory.
+    """
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S") if use_timestamp else ""
+    save_dir = get_root_dir() / base_dir / model_name / strategy / str(num_epochs)
+
+    if use_timestamp:
+        save_dir = save_dir / timestamp
+
+    save_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save best model
+    model_path = save_dir / "best_model.pth"
+    torch.save(best_model.state_dict(), model_path)
+    print(f"[INFO] Saved best model to {model_path}")
+
+    # Save training history
+    history_path = save_dir / "history.json"
+    with open(history_path, "w") as f:
+        json.dump(history, f, indent=4)
+    print(f"[INFO] Saved training history to {history_path}")
+
+    return save_dir
