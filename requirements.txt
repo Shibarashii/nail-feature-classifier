@@ -33,5 +33,6 @@ torch==2.8.0
 torchmetrics==1.8.2
 torchsummary==1.5.1
 torchvision==0.23.0
+tqdm==4.67.1
 triton==3.4.0
 typing_extensions==4.15.0

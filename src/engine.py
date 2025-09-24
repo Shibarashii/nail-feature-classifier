@@ -7,6 +7,7 @@ from time import time
 from torchsummary import summary
 from typing import Tuple
 from torchmetrics import Metric
+from tqdm.auto import tqdm
 
 
 def train_step(
@@ -23,26 +24,17 @@ def train_step(
     model.train()
     running_loss, running_acc = 0.0, 0.0
 
-    for batch_idx, (inputs, targets) in enumerate(data_loader):
+    for inputs, targets in tqdm(data_loader, desc="Training", leave=False):
         inputs, targets = inputs.to(device), targets.to(device)
-
-        # Forward pass
         outputs = model(inputs)
         loss = criterion(outputs, targets)
 
-        # Backward pass
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
-        # Accumulate metrics
         running_loss += loss.item()
         running_acc += accuracy_fn(targets, outputs.argmax(dim=1))
-
-        if (batch_idx + 1) % log_interval == 0:
-            seen = (batch_idx + 1) * data_loader.batch_size
-            print(f"Training: Seen {seen}/{len(data_loader.dataset)} samples")
-
     avg_loss = running_loss / len(data_loader)
     avg_acc = running_acc / len(data_loader)
     return avg_loss, avg_acc
