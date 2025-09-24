@@ -6,7 +6,6 @@ from torchvision.models import MobileNet_V3_Small_Weights
 
 # The purpose of this file is to have test runs, to ensure the model is working as expected.
 # These models are not used in the actual training/evaluation pipeline.
-
 def get_from_scratch_model(num_classes: int):
     """Return a model initialized from scratch (no pretrained weights)."""
     model = models.mobilenet_v3_small(weights=None)

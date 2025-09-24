@@ -1,3 +1,4 @@
+# src/models/regnety16gf.py
 import torch
 from torchvision import models
 from torchvision.models import RegNet_Y_16GF_Weights
