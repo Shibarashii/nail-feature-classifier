@@ -1,4 +1,4 @@
-description: "Universal configuration"
+description: "Baseline configuration"
 
 # ----------------------------
 # Global Hyperparameters
@@ -9,6 +9,7 @@ defaults:
   loss_function: cross_entropy
   optimizer: adamw
   lr: 0.001 # 1e-3
+  weight_decay: 0.01 # Lower weight decay for baseline (head-only training)
   seed: 42
   early_stopping_patience: 10
 # ----------------------------

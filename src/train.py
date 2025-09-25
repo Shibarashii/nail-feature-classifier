@@ -19,7 +19,6 @@ from torchmetrics import Accuracy
 def run_model(model: nn.Module, model_name: str, strategy: str):
     """
     Train the given model and save the best model weights and training history.
-
     Parameters
     ----------
     model : nn.Module
@@ -36,13 +35,16 @@ def run_model(model: nn.Module, model_name: str, strategy: str):
     # Loss, optimizer, scheduler
     CRITERION = torch.nn.CrossEntropyLoss(
         weight=get_class_weight(device=device))
+
     optimizer = torch.optim.AdamW(
         filter(lambda p: p.requires_grad, model.parameters()),
-        lr=LEARNING_RATE
+        lr=LEARNING_RATE,
+        weight_decay=WEIGHT_DECAY
     )
 
     accuracy_fn = Accuracy(
         task='multiclass', num_classes=num_classes).to(device)
+
     scheduler_params = config.get("scheduler_params", {})
     scheduler = ReduceLROnPlateau(optimizer, **scheduler_params)
 
@@ -78,11 +80,10 @@ if __name__ == "__main__":
                         help="Model name (efficientnetv2s, resnet50, etc.)")
     parser.add_argument("--strategy", type=str, required=True,
                         help="Training strategy (scratch, baseline, full_finetune, gradual_unfreeze)")
-    parser.add_argument("--config", type=str, default="config.yaml",
-                        help="YAML config file to use (default: config.yaml)")
+    parser.add_argument("--config", type=str, default="baseline.yaml",
+                        help="YAML config file to use (default: baseline.yaml)")
 
     args = parser.parse_args()
-
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Load YAML config
@@ -95,11 +96,12 @@ if __name__ == "__main__":
     BATCH_SIZE = config["defaults"]["batch_size"]
     SEED = config["defaults"]["seed"]
     LEARNING_RATE = float(config["defaults"]["lr"])
+    WEIGHT_DECAY = float(config["defaults"].get(
+        "weight_decay", 0.01))  # default to 0.01
     EARLY_STOPPING_PATIENCE = config["defaults"].get(
         "early_stopping_patience", 5)  # default to 5
 
     test_run = args.config.lower().startswith("test")
-
     set_seed(SEED)
 
     train_loader, val_loader, test_loader, class_names, class_to_idx, num_classes = create_dataloaders(

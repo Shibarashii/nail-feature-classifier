@@ -1,0 +1,23 @@
+description: "Full fine-tuning configuration"
+# ----------------------------
+# Global Hyperparameters
+# ----------------------------
+defaults:
+  batch_size: 32
+  num_epochs: 50 # Increased for full fine-tuning
+  loss_function: cross_entropy
+  optimizer: adamw
+  lr: 0.00001 # 1e-5 - safer for fine-tuning pretrained transformers
+  weight_decay: 0.05 # Important for transformers
+  seed: 42
+  early_stopping_patience: 15 # Increased patience for full fine-tuning
+# ----------------------------
+# Scheduler Hyperparameters
+# ----------------------------
+scheduler_params:
+  mode: min
+  factor: 0.5
+  patience: 5 # Slightly more patience since we're using lower LR
+  threshold: 0.00001 # 1e-5 - adjusted for lower LR scale
+  cooldown: 2 # More cooldown for stability
+  min_lr: 0.000001 # 1e-6
