@@ -1,5 +1,4 @@
 description: "Test run config - fastest possible"
-
 # ----------------------------
 # Global Hyperparameters
 # ----------------------------
@@ -9,6 +8,7 @@ defaults:
   loss_function: cross_entropy
   optimizer: adamw
   lr: 0.001 # can increase for faster convergence in test
+  weight_decay: 0.01 # Standard weight decay for test runs
   seed: 42
 # ----------------------------
 # Scheduler Hyperparameters
