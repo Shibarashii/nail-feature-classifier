@@ -39,6 +39,12 @@ from src.models.swinv2t import (
     get_full_finetune_model as swinv2t_full,
     get_gradual_unfreeze_model as swinv2t_gradual
 )
+from src.models.convnexttiny import (
+    get_from_scratch_model as convnexttiny_scratch,
+    get_baseline_model as convnexttiny_baseline,
+    get_full_finetune_model as convnexttiny_full,
+    get_gradual_unfreeze_model as convnexttiny_gradual
+)
 
 
 def get_model(model_name: str, strategy: str, num_classes: int):
@@ -78,6 +84,12 @@ def get_model(model_name: str, strategy: str, num_classes: int):
             "baseline": swinv2t_baseline,
             "full_finetune": swinv2t_full,
             "gradual_unfreeze": swinv2t_gradual
+        },
+        "convnexttiny": {
+            "scratch": convnexttiny_scratch,
+            "baseline": convnexttiny_baseline,
+            "full_finetune": convnexttiny_full,
+            "gradual_unfreeze": convnexttiny_gradual
         }
     }
 
