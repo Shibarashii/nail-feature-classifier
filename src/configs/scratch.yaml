@@ -1,0 +1,19 @@
+description: "From-scratch configuration"
+
+defaults:
+  batch_size: 32 # increase if GPU memory allows
+  num_epochs: 200 # scratch needs many more epochs
+  loss_function: cross_entropy
+  optimizer: adamw
+  lr: 0.001 # start higher, decay over time
+  weight_decay: 0.0005 # lighter than fine-tuning
+  seed: 42
+  early_stopping_patience: 25 # more patience
+
+scheduler_params:
+  mode: min
+  factor: 0.1 # stronger drops than half
+  patience: 10
+  threshold: 0.0001
+  cooldown: 2
+  min_lr: 1e-6
