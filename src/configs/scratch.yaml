@@ -1,3 +1,4 @@
+# src/configs/scratch.yaml
 description: "From-scratch configuration"
 
 defaults:
@@ -13,7 +14,7 @@ defaults:
 scheduler_params:
   mode: min
   factor: 0.1 # stronger drops than half
-  patience: 10
+  patience: 10 # more patience for scratch
   threshold: 0.0001
   cooldown: 2
   min_lr: 1e-6
