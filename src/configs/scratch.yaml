@@ -9,7 +9,7 @@ defaults:
   lr: 0.001 # start higher, decay over time
   weight_decay: 0.0005 # lighter than fine-tuning
   seed: 42
-  early_stopping_patience: 25 # more patience
+  early_stopping_patience: 15 # more patience
 
 scheduler_params:
   mode: min
