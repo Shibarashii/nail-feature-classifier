@@ -18,7 +18,6 @@ def train_step(
     optimizer: optim.Optimizer,
     accuracy_fn: Metric,
     device: torch.device,
-    log_interval: int = 10,
 ) -> Tuple[float, float]:
     """Training step."""
 
