@@ -8,6 +8,7 @@ from torchsummary import summary
 from typing import Tuple
 from torchmetrics import Metric
 from tqdm.auto import tqdm
+import copy
 
 
 def train_step(
@@ -133,6 +134,7 @@ def train_model(
     best_val_loss = float("inf")
     epochs_no_improve = 0
     history = []
+    best_model_wts = copy.deepcopy(model.state_dict())
 
     for epoch in range(1, num_epochs + 1):
         start_time = time()
@@ -169,6 +171,7 @@ def train_model(
         # Save best model and reset patience counter
         if val_loss < best_val_loss:
             best_val_loss = val_loss
+            best_model_wts = copy.deepcopy(model.state_dict())
             epochs_no_improve = 0
         else:
             epochs_no_improve += 1
@@ -178,4 +181,6 @@ def train_model(
             print(f"Early stopping triggered at epoch {epoch}")
             break
 
+    # Load best weights before returning
+    model.load_state_dict(best_model_wts)
     return model, history
