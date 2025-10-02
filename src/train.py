@@ -14,56 +14,73 @@ from src.models.get_model import get_model
 from src.utils.seed import set_seed
 from src.utils.save import save_experiment_outputs
 from torchmetrics import Accuracy
+from src.engine import train_model_ulmfit
 
 
 def run_model(model: nn.Module, model_name: str, strategy: str):
     """
     Train the given model and save the best model weights and training history.
-    Parameters
-    ----------
-    model : nn.Module
-        The PyTorch model to train.
-    device : torch.device
-        Device to train on (cuda or cpu).
-    model_name : str
-        Name of the model (used for saving).
-    strategy : str
-        Training strategy (scratch, baseline, full_finetune, gradual_unfreeze).
     """
     model = model.to(device)
 
-    # Loss, optimizer, scheduler
-    CRITERION = torch.nn.CrossEntropyLoss(
-        weight=get_class_weight(device=device))
+    # Loss function
+    CRITERION = nn.CrossEntropyLoss(weight=get_class_weight(device=device))
 
-    optimizer = torch.optim.AdamW(
-        filter(lambda p: p.requires_grad, model.parameters()),
-        lr=LEARNING_RATE,
-        weight_decay=WEIGHT_DECAY
-    )
+    # Optimizer function
+    optimizer_func = torch.optim.AdamW
 
+    # Accuracy metric
     accuracy_fn = Accuracy(
         task='multiclass', num_classes=num_classes).to(device)
 
-    scheduler_params = config.get("scheduler_params", {})
-    scheduler = ReduceLROnPlateau(optimizer, **scheduler_params)
+    if strategy.lower() == "ulmfit":
+        # Read from config
+        EPOCHS_PER_UNFREEZE = config["defaults"].get(
+            "epochs_per_unfreeze", None)
 
-    # TRAINING THE MODEL
-    best_model, history = train_model(
-        model=model,
-        train_loader=train_loader,
-        val_loader=val_loader,
-        criterion=CRITERION,
-        optimizer=optimizer,
-        scheduler=scheduler,
-        device=device,
-        accuracy_fn=accuracy_fn,
-        num_epochs=NUM_EPOCHS,
-        patience=EARLY_STOPPING_PATIENCE,
-        print_summary=True
-    )
+        # ULMFiT-style training
+        best_model, history = train_model_ulmfit(
+            model=model,
+            train_loader=train_loader,
+            val_loader=val_loader,
+            criterion=CRITERION,
+            optimizer_func=optimizer_func,
+            device=device,
+            accuracy_fn=accuracy_fn,
+            model_name=model_name,
+            num_epochs=NUM_EPOCHS,
+            patience=EARLY_STOPPING_PATIENCE,
+            base_lr=LEARNING_RATE,
+            epochs_per_unfreeze=EPOCHS_PER_UNFREEZE,
+            print_summary=True
+        )
 
-    # SAVING THE MODEL
+    else:
+        # Standard PyTorch training
+        optimizer = optimizer_func(
+            filter(lambda p: p.requires_grad, model.parameters()),
+            lr=LEARNING_RATE,
+            weight_decay=WEIGHT_DECAY
+        )
+
+        scheduler_params = config.get("scheduler_params", {})
+        scheduler = ReduceLROnPlateau(optimizer, **scheduler_params)
+
+        best_model, history = train_model(
+            model=model,
+            train_loader=train_loader,
+            val_loader=val_loader,
+            criterion=CRITERION,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            device=device,
+            accuracy_fn=accuracy_fn,
+            num_epochs=NUM_EPOCHS,
+            patience=EARLY_STOPPING_PATIENCE,
+            print_summary=True
+        )
+
+    # Save outputs
     save_experiment_outputs(
         best_model=best_model,
         history=history,

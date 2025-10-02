@@ -1,4 +1,9 @@
 # src/engine.py
+from src.utils.gradual_unfreeze import get_layer_groups, get_unfreeze_schedule
+from fastai.data.core import DataLoaders
+from fastai.callback.tracker import EarlyStoppingCallback
+from fastai.learner import Learner
+from fastai.vision.all import Learner, EarlyStoppingCallback, accuracy, slice
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -181,5 +186,132 @@ def train_model(
             break
 
     # Load best weights before returning
+    model.load_state_dict(best_model_wts)
+    return model, history
+
+
+def train_model_ulmfit(
+    model: torch.nn.Module,
+    train_loader: DataLoader,
+    val_loader: DataLoader,
+    criterion: torch.nn.Module,
+    optimizer_func,
+    device: torch.device,
+    accuracy_fn,
+    model_name: str,
+    num_epochs: int = 50,
+    patience: int = 5,
+    base_lr: float = 1e-3,
+    epochs_per_unfreeze: int = None,
+    print_summary: bool = True
+):
+    """
+    Train a PyTorch model using FastAI with full ULMFiT-style gradual unfreeze,
+    discriminative learning rates, SLTR, and early stopping.
+
+    Parameters
+    ----------
+    model : nn.Module
+        PyTorch model.
+    train_loader, val_loader : DataLoader
+        DataLoaders.
+    criterion : nn.Module
+        Loss function.
+    optimizer_func : callable
+        Optimizer function (e.g., torch.optim.AdamW)
+    device : torch.device
+    accuracy_fn : FastAI metric
+    model_name : str
+        Name of model architecture to get layer groups.
+    num_epochs : int
+    patience : int
+    base_lr : float
+        Maximum LR for head (earlier layers will have lower LR automatically)
+    epochs_per_unfreeze : int, optional
+        Number of epochs between unfreezing layer groups.
+    print_summary : bool
+    """
+    # Wrap DataLoaders
+    dls = DataLoaders(train_loader, val_loader)
+
+    # Create Learner
+    learn = Learner(
+        dls,
+        model,
+        loss_func=criterion,
+        metrics=accuracy_fn,
+        opt_func=optimizer_func,
+        cbs=[EarlyStoppingCallback(monitor='valid_loss', patience=patience)]
+    )
+
+    # Get layer groups for this model
+    layer_groups = get_layer_groups(model, model_name)
+    n_groups = len(layer_groups)
+
+    # Freeze everything initially
+    learn.freeze()
+
+    # Compute unfreeze schedule
+    schedule = get_unfreeze_schedule(n_groups, num_epochs, epochs_per_unfreeze)
+
+    history = []
+    best_model_wts = copy.deepcopy(model.state_dict())
+    best_val_loss = float('inf')
+
+    for epoch in range(num_epochs):
+        start_time = time()
+
+        # Check if we should unfreeze a new group this epoch
+        if epoch in schedule:
+            group_idx = schedule[epoch]
+            # FastAI freezes all except last `n` groups
+            learn.freeze_to(group_idx + 1)
+            if print_summary:
+                print(
+                    f"\nEpoch {epoch}: Unfreezing up to group {group_idx}/{n_groups-1}")
+
+        # Discriminative LR: smaller for early layers, higher for head
+        # FastAI handles this via slice(lr_min, lr_max)
+        lr_slice = slice(base_lr / 10, base_lr)
+
+        # Fit one epoch with 1-cycle / SLTR
+        learn.fit_one_cycle(1, lr_max=lr_slice)
+
+        # Extract metrics
+        val_loss = float(learn.recorder.values[-1][0])
+        val_acc = float(learn.recorder.values[-1][1])
+        train_loss = float(learn.recorder.losses[-len(train_loader):].mean())
+        accuracy_fn.reset()  # make sure it's fresh for this evaluation
+        model.eval()
+        with torch.inference_mode():
+            for xb, yb in train_loader:
+                xb, yb = xb.to(device), yb.to(device)
+                preds = model(xb)
+                accuracy_fn.update(preds.argmax(dim=1), yb)
+        train_acc = accuracy_fn.compute().item()  # get final scalar
+        epoch_time = time() - start_time
+        current_lr = learn.opt.hypers[-1]['lr']
+
+        # Save metrics
+        history.append({
+            'epoch': epoch,
+            'train_loss': train_loss,
+            'train_acc': train_acc,
+            'val_loss': val_loss,
+            'val_acc': val_acc,
+            'lr': current_lr,
+            'time': epoch_time
+        })
+
+        print(f"Epoch [{epoch+1}/{num_epochs}] "
+              f"Train Acc: {train_acc:.4f} | Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f} | "
+              f"LR: {current_lr:.6f} | Time: {epoch_time:.2f}s")
+
+        # Save best model
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            best_model_wts = copy.deepcopy(model.state_dict())
+
+    # Restore best model
     model.load_state_dict(best_model_wts)
     return model, history

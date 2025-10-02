@@ -1,0 +1,9 @@
+# src/configs/ulmfit.yaml
+defaults:
+  batch_size: 32
+  num_epochs: 50
+  seed: 42
+  lr: 0.001 # Base LR for head (will be used with discriminative LR)
+  weight_decay: 0.01
+  early_stopping_patience: 5
+  epochs_per_unfreeze: 3 # How many epochs between unfreezing layer groups
