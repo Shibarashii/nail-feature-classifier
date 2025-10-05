@@ -1,6 +1,9 @@
 # src/configs/scratch.yaml
 description: "From-scratch configuration"
 
+# ----------------------------
+# Global Hyperparameters
+# ----------------------------
 defaults:
   batch_size: 32 # increase if GPU memory allows
   num_epochs: 200 # scratch needs many more epochs

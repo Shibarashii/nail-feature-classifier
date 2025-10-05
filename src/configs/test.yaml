@@ -1,4 +1,6 @@
+# src/configs/test.yaml
 description: "Test run config - fastest possible"
+
 # ----------------------------
 # Global Hyperparameters
 # ----------------------------

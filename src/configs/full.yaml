@@ -1,4 +1,6 @@
+# src/configs/full.yaml
 description: "Full fine-tuning configuration"
+
 # ----------------------------
 # Global Hyperparameters
 # ----------------------------
