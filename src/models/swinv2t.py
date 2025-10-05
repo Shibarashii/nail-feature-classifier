@@ -62,3 +62,34 @@ def get_gradual_unfreeze_model(num_classes: int):
         param.requires_grad = True
 
     return model
+
+
+def get_layer_groups(model):
+    """
+    Split Swin V2 Tiny into layer groups for gradual unfreezing.
+    Returns groups from head to early layers.
+
+    Swin V2 Tiny architecture:
+    - features[0]: PatchEmbedding (stem)
+    - features[1]: Stage 1 - 2 Swin Transformer blocks
+    - features[2]: PatchMerging (downsampling)
+    - features[3]: Stage 2 - 2 Swin Transformer blocks
+    - features[4]: PatchMerging (downsampling)
+    - features[5]: Stage 3 - 6 Swin Transformer blocks
+    - features[6]: PatchMerging (downsampling)
+    - features[7]: Stage 4 - 2 Swin Transformer blocks (deepest)
+    - norm: Layer normalization
+    - head: Classification head
+    """
+    groups = [
+        [model.head, model.norm],  # Group 0: Head + final normalization
+        model.features[7],         # Group 1: Stage 4 (deepest, 2 blocks)
+        model.features[6],         # Group 2: Patch merging 3
+        model.features[5],         # Group 3: Stage 3 (6 blocks)
+        model.features[4],         # Group 4: Patch merging 2
+        model.features[3],         # Group 5: Stage 2 (2 blocks)
+        model.features[2],         # Group 6: Patch merging 1
+        model.features[1],         # Group 7: Stage 1 (2 blocks)
+        model.features[0],         # Group 8: Patch embedding (stem)
+    ]
+    return groups

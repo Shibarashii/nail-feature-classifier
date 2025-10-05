@@ -9,6 +9,11 @@ from typing import Tuple
 from torchmetrics import Metric
 from tqdm.auto import tqdm
 import copy
+from src.utils.unfreeze import (
+    unfreeze_layer_group,
+    should_unfreeze_next_group,
+    print_trainable_parameters
+)
 
 
 def train_step(
@@ -77,11 +82,14 @@ def train_model(
     device: torch.device,
     accuracy_fn: Metric,
     num_epochs: int = 50,
-    patience: int = 5,         # Early stopping patience
-    print_summary: bool = True
+    patience: int = 5,
+    print_summary: bool = True,
+    layer_groups: list = None,  # For gradual unfreezing
+    unfreeze_schedule: list = None  # For gradual unfreezing
 ):
     """
     Train a PyTorch model with early stopping and learning rate scheduling.
+    Supports gradual unfreezing of layer groups.
 
     Parameters
     ----------
@@ -99,33 +107,27 @@ def train_model(
         Learning rate scheduler that reduces LR when a metric has stopped improving.
     device : torch.device
         Device to train the model on (`cuda` or `cpu`).
+    accuracy_fn : Metric
+        Metric function for calculating accuracy.
     num_epochs : int, optional
         Maximum number of training epochs (default is 50).
     patience : int, optional
         Number of epochs with no improvement on validation loss before early stopping (default is 5).
     print_summary : bool, optional
         Whether to print a model summary before training starts (default is True).
+    layer_groups : list, optional
+        List of layer groups for gradual unfreezing (None for standard training).
+    unfreeze_schedule : list, optional
+        Schedule of epochs at which to unfreeze each layer group.
 
     Returns
     -------
     model : nn.Module
         The trained PyTorch model with the best validation loss.
     history : list of dict
-        List containing metrics for each epoch, including:
-        - 'epoch': Epoch number
-        - 'train_loss': Training loss
-        - 'train_acc': Training accuracy
-        - 'val_loss': Validation loss
-        - 'val_acc': Validation accuracy
-        - 'lr': Current learning rate
-        - 'time': Epoch duration in seconds
-
-    Notes
-    -----
-    - Early stopping is triggered if the validation loss does not improve for `patience` consecutive epochs.
-    - The best model (lowest validation loss) is saved to "best_model.pth".
-    - The learning rate scheduler is stepped after each validation epoch using the current validation loss.
+        List containing metrics for each epoch.
     """
+
     if print_summary:
         sample_input, _ = next(iter(train_loader))
         summary(model, input_size=sample_input.shape[1:], device=str(device))
@@ -135,7 +137,32 @@ def train_model(
     history = []
     best_model_wts = copy.deepcopy(model.state_dict())
 
+    # Initialize gradual unfreezing tracking
+    current_unfrozen_group = 0 if layer_groups else None
+    gradual_unfreeze_enabled = layer_groups is not None and unfreeze_schedule is not None
+
     for epoch in range(1, num_epochs + 1):
+        # Handle gradual unfreezing
+        if gradual_unfreeze_enabled:
+            if should_unfreeze_next_group(epoch, unfreeze_schedule, current_unfrozen_group):
+                current_unfrozen_group += 1
+                unfreeze_layer_group(layer_groups[current_unfrozen_group])
+                print(f"\n{'='*60}")
+                print(
+                    f"Unfreezing layer group {current_unfrozen_group} at epoch {epoch}")
+                print_trainable_parameters(model)
+                print(f"{'='*60}\n")
+
+                # Reinitialize optimizer to include newly unfrozen parameters
+                # Preserve the current learning rate
+                current_lr = optimizer.param_groups[0]['lr']
+                optimizer = type(optimizer)(
+                    filter(lambda p: p.requires_grad, model.parameters()),
+                    lr=current_lr,
+                    weight_decay=optimizer.param_groups[0].get(
+                        'weight_decay', 0)
+                )
+
         start_time = time()
 
         # Train & validate
@@ -159,7 +186,8 @@ def train_model(
             'val_loss': val_loss,
             'val_acc': val_acc,
             'lr': current_lr,
-            'time': epoch_time
+            'time': epoch_time,
+            'unfrozen_group': current_unfrozen_group if gradual_unfreeze_enabled else None
         })
 
         print(f"Epoch [{epoch}/{num_epochs}] "

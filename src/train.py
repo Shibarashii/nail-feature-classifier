@@ -14,6 +14,7 @@ from src.models.get_model import get_model
 from src.utils.seed import set_seed
 from src.utils.save import save_experiment_outputs
 from torchmetrics import Accuracy
+from src.utils.unfreeze import get_unfreeze_schedule
 
 
 def run_model(model: nn.Module, model_name: str, strategy: str):
@@ -23,13 +24,12 @@ def run_model(model: nn.Module, model_name: str, strategy: str):
     ----------
     model : nn.Module
         The PyTorch model to train.
-    device : torch.device
-        Device to train on (cuda or cpu).
     model_name : str
         Name of the model (used for saving).
     strategy : str
         Training strategy (scratch, baseline, full_finetune, gradual_unfreeze).
     """
+
     model = model.to(device)
 
     # Loss, optimizer, scheduler
@@ -48,6 +48,36 @@ def run_model(model: nn.Module, model_name: str, strategy: str):
     scheduler_params = config.get("scheduler_params", {})
     scheduler = ReduceLROnPlateau(optimizer, **scheduler_params)
 
+    # Setup gradual unfreezing if needed
+    layer_groups = None
+    unfreeze_schedule = None
+
+    if strategy == "gradual_unfreeze":
+        # Import the get_layer_groups function from the appropriate model file
+        if model_name == "efficientnetv2s":
+            from src.models.efficientnetv2s import get_layer_groups
+        elif model_name == "convnexttiny":
+            from src.models.convnexttiny import get_layer_groups
+        elif model_name == "swinv2t":
+            from src.models.swinv2t import get_layer_groups
+        elif model_name == "vgg16":
+            from src.models.vgg16 import get_layer_groups
+        elif model_name == "resnet50":
+            from src.models.resnet50 import get_layer_groups
+        else:
+            raise ValueError(
+                f"Gradual unfreezing not implemented for model: {model_name}")
+
+        layer_groups = get_layer_groups(model)
+        unfreeze_schedule = get_unfreeze_schedule(
+            NUM_EPOCHS, len(layer_groups))
+        print(f"\n{'='*60}")
+        print(f"Gradual Unfreezing Configuration:")
+        print(f"  - Model: {model_name}")
+        print(f"  - Number of layer groups: {len(layer_groups)}")
+        print(f"  - Unfreeze schedule: {unfreeze_schedule}")
+        print(f"{'='*60}\n")
+
     # TRAINING THE MODEL
     best_model, history = train_model(
         model=model,
@@ -60,7 +90,9 @@ def run_model(model: nn.Module, model_name: str, strategy: str):
         accuracy_fn=accuracy_fn,
         num_epochs=NUM_EPOCHS,
         patience=EARLY_STOPPING_PATIENCE,
-        print_summary=True
+        print_summary=True,
+        layer_groups=layer_groups,
+        unfreeze_schedule=unfreeze_schedule
     )
 
     # SAVING THE MODEL
