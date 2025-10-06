@@ -21,6 +21,6 @@ scheduler_params:
   mode: min
   factor: 0.5
   patience: 3
-  threshold: 0.0001
+  threshold: 0.005
   cooldown: 1
   min_lr: 0.0000001 # 1e-7
