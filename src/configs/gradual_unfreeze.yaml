@@ -9,7 +9,7 @@ defaults:
   num_epochs: 50
   loss_function: cross_entropy
   optimizer: adamw
-  lr: 0.0001 # Lower initial LR for gradual unfreezing
+  lr: 0.00001 # Lower initial LR for gradual unfreezing
   weight_decay: 0.01
   seed: 42
   early_stopping_patience: 15
