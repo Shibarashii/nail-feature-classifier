@@ -6,7 +6,7 @@ description: "Gradual unfreezing configuration"
 # ----------------------------
 defaults:
   batch_size: 32
-  num_epochs: 50 # Need enough epochs to unfreeze all groups
+  num_epochs: 70 # Need enough epochs to unfreeze all groups
   loss_function: cross_entropy
   optimizer: adamw
   lr: 0.0001 # Lower initial LR for gradual unfreezing
@@ -20,7 +20,7 @@ defaults:
 scheduler_params:
   mode: min
   factor: 0.5
-  patience: 5
+  patience: 3
   threshold: 0.0001
   cooldown: 2
   min_lr: 0.000001
