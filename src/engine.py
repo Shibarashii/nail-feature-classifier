@@ -167,8 +167,7 @@ def train_model(
                 current_lr = optimizer.param_groups[0]['lr']
                 current_wd = optimizer.param_groups[0].get('weight_decay', 0)
 
-                print(f"  Current LR: {current_lr:.6f}")
-                print(f"  Weight decay: {current_wd:.6f}")
+                print(f"Current LR: {current_lr:.6f}")
 
                 # Reinitialize optimizer with newly unfrozen parameters
                 optimizer = type(optimizer)(
@@ -184,8 +183,6 @@ def train_model(
                     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
                         optimizer, **scheduler_params
                     )
-                    print(f"✓ Scheduler reinitialized with new optimizer")
-                    print(f"  Scheduler will start fresh patience tracking")
                 else:
                     # Fallback with default parameters
                     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
