@@ -12,7 +12,7 @@ defaults:
   lr: 0.0001 # Lower initial LR for gradual unfreezing
   weight_decay: 0.01
   seed: 42
-  early_stopping_patience: 10
+  early_stopping_patience: 15
 
 # ----------------------------
 # Scheduler Hyperparameters
