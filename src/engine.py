@@ -84,8 +84,9 @@ def train_model(
     num_epochs: int = 50,
     patience: int = 5,
     print_summary: bool = True,
-    layer_groups: list = None,  # For gradual unfreezing
-    unfreeze_schedule: list = None  # For gradual unfreezing
+    layer_groups: list = None,
+    unfreeze_schedule: list = None,
+    scheduler_params: dict = None
 ):
     """
     Train a PyTorch model with early stopping and learning rate scheduling.
@@ -119,6 +120,8 @@ def train_model(
         List of layer groups for gradual unfreezing (None for standard training).
     unfreeze_schedule : list, optional
         Schedule of epochs at which to unfreeze each layer group.
+    scheduler_params : dict, optional
+        Parameters for recreating the scheduler after unfreezing.
 
     Returns
     -------
@@ -126,8 +129,15 @@ def train_model(
         The trained PyTorch model with the best validation loss.
     history : list of dict
         List containing metrics for each epoch.
-    """
 
+    Notes
+    -----
+    When gradual unfreezing is enabled:
+    - The scheduler state is reset when a new layer group is unfrozen
+    - This gives the model patience to adapt to newly trainable parameters
+    - The learning rate is preserved across unfreezing events
+    - Early stopping patience is NOT reset on unfreezing
+    """
     if print_summary:
         sample_input, _ = next(iter(train_loader))
         summary(model, input_size=sample_input.shape[1:], device=str(device))
@@ -147,21 +157,49 @@ def train_model(
             if should_unfreeze_next_group(epoch, unfreeze_schedule, current_unfrozen_group):
                 current_unfrozen_group += 1
                 unfreeze_layer_group(layer_groups[current_unfrozen_group])
+
                 print(f"\n{'='*60}")
                 print(
                     f"Unfreezing layer group {current_unfrozen_group} at epoch {epoch}")
                 print_trainable_parameters(model)
-                print(f"{'='*60}\n")
 
-                # Reinitialize optimizer to include newly unfrozen parameters
-                # Preserve the current learning rate
+                # Preserve current learning rate and weight decay
                 current_lr = optimizer.param_groups[0]['lr']
+                current_wd = optimizer.param_groups[0].get('weight_decay', 0)
+
+                print(f"  Current LR: {current_lr:.6f}")
+                print(f"  Weight decay: {current_wd:.6f}")
+
+                # Reinitialize optimizer with newly unfrozen parameters
                 optimizer = type(optimizer)(
                     filter(lambda p: p.requires_grad, model.parameters()),
                     lr=current_lr,
-                    weight_decay=optimizer.param_groups[0].get(
-                        'weight_decay', 0)
+                    weight_decay=current_wd
                 )
+
+                # CRITICAL: Reinitialize scheduler with new optimizer
+                # This resets the scheduler's internal state (patience counter, best value)
+                # giving the model time to adapt to newly unfrozen parameters
+                if scheduler_params is not None:
+                    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+                        optimizer, **scheduler_params
+                    )
+                    print(f"✓ Scheduler reinitialized with new optimizer")
+                    print(f"  Scheduler will start fresh patience tracking")
+                else:
+                    # Fallback with default parameters
+                    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+                        optimizer,
+                        mode='min',
+                        factor=0.5,
+                        patience=5,
+                        threshold=0.0001,
+                        cooldown=1,
+                        min_lr=1e-6
+                    )
+                    print(f"⚠ Scheduler reinitialized with default parameters")
+
+                print(f"{'='*60}\n")
 
         start_time = time()
 
@@ -171,7 +209,7 @@ def train_model(
         val_loss, val_acc = val_step(
             model, val_loader, criterion, accuracy_fn, device)
 
-        # Scheduler step (Reduce LR if val_loss plateaus)
+        # Scheduler step (monitors validation loss)
         scheduler.step(val_loss)
 
         # Epoch timing and learning rate
@@ -182,9 +220,9 @@ def train_model(
         history.append({
             'epoch': epoch,
             'train_loss': train_loss,
-            'train_acc': train_acc,
+            'train_acc': train_acc.item() if hasattr(train_acc, 'item') else train_acc,
             'val_loss': val_loss,
-            'val_acc': val_acc,
+            'val_acc': val_acc.item() if hasattr(val_acc, 'item') else val_acc,
             'lr': current_lr,
             'time': epoch_time,
             'unfrozen_group': current_unfrozen_group if gradual_unfreeze_enabled else None
@@ -195,7 +233,7 @@ def train_model(
               f"Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f} | "
               f"LR: {current_lr:.6f} | Time: {epoch_time:.2f}s")
 
-        # Save best model and reset patience counter
+        # Save best model and update early stopping counter
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             best_model_wts = copy.deepcopy(model.state_dict())
@@ -205,9 +243,15 @@ def train_model(
 
         # Early stopping
         if epochs_no_improve >= patience:
-            print(f"Early stopping triggered at epoch {epoch}")
+            print(f"\nEarly stopping triggered at epoch {epoch}")
+            print(f"Best validation loss: {best_val_loss:.4f}")
             break
 
     # Load best weights before returning
     model.load_state_dict(best_model_wts)
+    print(f"\n{'='*60}")
+    print(f"Training complete!")
+    print(f"Best validation loss: {best_val_loss:.4f}")
+    print(f"{'='*60}\n")
+
     return model, history

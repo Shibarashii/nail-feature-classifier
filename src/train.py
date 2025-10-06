@@ -29,7 +29,6 @@ def run_model(model: nn.Module, model_name: str, strategy: str):
     strategy : str
         Training strategy (scratch, baseline, full_finetune, gradual_unfreeze).
     """
-
     model = model.to(device)
 
     # Loss, optimizer, scheduler
@@ -71,6 +70,7 @@ def run_model(model: nn.Module, model_name: str, strategy: str):
         layer_groups = get_layer_groups(model)
         unfreeze_schedule = get_unfreeze_schedule(
             NUM_EPOCHS, len(layer_groups))
+
         print(f"\n{'='*60}")
         print(f"Gradual Unfreezing Configuration:")
         print(f"  - Model: {model_name}")
@@ -92,7 +92,8 @@ def run_model(model: nn.Module, model_name: str, strategy: str):
         patience=EARLY_STOPPING_PATIENCE,
         print_summary=True,
         layer_groups=layer_groups,
-        unfreeze_schedule=unfreeze_schedule
+        unfreeze_schedule=unfreeze_schedule,
+        scheduler_params=scheduler_params
     )
 
     # SAVING THE MODEL
