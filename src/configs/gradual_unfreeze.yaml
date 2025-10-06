@@ -6,13 +6,13 @@ description: "Gradual unfreezing configuration"
 # ----------------------------
 defaults:
   batch_size: 32
-  num_epochs: 70 # Need enough epochs to unfreeze all groups
+  num_epochs: 50
   loss_function: cross_entropy
   optimizer: adamw
   lr: 0.0001 # Lower initial LR for gradual unfreezing
   weight_decay: 0.01
   seed: 42
-  early_stopping_patience: 15 # Higher patience for gradual unfreezing
+  early_stopping_patience: 10
 
 # ----------------------------
 # Scheduler Hyperparameters
@@ -22,5 +22,5 @@ scheduler_params:
   factor: 0.5
   patience: 3
   threshold: 0.0001
-  cooldown: 2
+  cooldown: 1
   min_lr: 0.000001
