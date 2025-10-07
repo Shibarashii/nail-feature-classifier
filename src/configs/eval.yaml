@@ -1,0 +1,9 @@
+# src/configs/eval.yaml
+description: "Evaluation configuration"
+
+# ----------------------------
+# Global Hyperparameters
+# ----------------------------
+defaults:
+  batch_size: 32 # increase if GPU memory allows
+  seed: 42
