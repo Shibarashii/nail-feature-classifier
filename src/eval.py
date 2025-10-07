@@ -12,19 +12,16 @@ import seaborn as sns
 from pathlib import Path
 import argparse
 import yaml
+from tqdm.auto import tqdm
 from sklearn.metrics import (
     accuracy_score,
     precision_score,
     recall_score,
     f1_score,
     confusion_matrix,
-    classification_report,
     roc_curve,
     auc,
-    precision_recall_curve,
-    average_precision_score
 )
-from typing import Dict, Tuple, List
 import json
 
 from src.utils.helpers import get_root_dir
@@ -97,7 +94,7 @@ def get_predictions(model, dataloader, device):
     all_labels = []
 
     with torch.inference_mode():
-        for inputs, labels in dataloader:
+        for inputs, labels in tqdm(dataloader, desc="Evaluating", unit="batch"):
             inputs = inputs.to(device)
             labels = labels.to(device)
 
@@ -176,7 +173,7 @@ def compute_ml_metrics(y_true, y_pred, class_names):
     return metrics
 
 
-def compute_medical_metrics(y_true, y_pred, class_names, negative_class="healthy"):
+def compute_medical_metrics(y_true, y_pred, class_names):
     """
     Compute medical diagnostic metrics (binary or multi-class one-vs-rest).
 
@@ -196,8 +193,6 @@ def compute_medical_metrics(y_true, y_pred, class_names, negative_class="healthy
         Predicted labels.
     class_names : list
         List of class names.
-    positive_class : int, optional
-        For binary classification, which class is "positive".
 
     Returns
     -------
@@ -483,7 +478,6 @@ def evaluate_model(
     model_path: str,
     model_name: str,
     strategy: str,
-    config_path: str,
     output_dir: str,
     dataset_split: str = 'test'
 ):
@@ -509,7 +503,8 @@ def evaluate_model(
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    # Load config
+    # Load YAML config
+    config_path = get_root_dir() / "src" / "configs" / "eval.yaml"
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
 
@@ -525,7 +520,7 @@ def evaluate_model(
 
     # Load data
     print("\n📁 Loading dataset...")
-    train_loader, val_loader, test_loader, class_names, class_to_idx, num_classes = create_dataloaders(
+    train_loader, val_loader, test_loader, _, class_to_idx, num_classes = create_dataloaders(
         train_transform=get_test_transforms(
             test_run=test_run),  # Use test transforms
         test_transform=get_test_transforms(test_run=test_run),
@@ -533,6 +528,19 @@ def evaluate_model(
         num_workers=os.cpu_count(),
         test_run=test_run
     )
+
+    class_names = [
+        "Melanonychia",  # 1
+        "Beau's Lines",  # 2
+        "Blue Finger",  # 3
+        "Clubbing",  # 4
+        "Healthy Nail",  # 5
+        "Koilonychia",  # 6
+        "Muehrcke's Lines",  # 7
+        "Onychogryphosis",  # 8
+        "Pitting",  # 9
+        "Terry's Nails"  # 10
+    ]
 
     # Select dataloader based on split
     if dataset_split == 'test':
@@ -617,8 +625,6 @@ if __name__ == "__main__":
                         help="Model name (efficientnetv2s, resnet50, etc.)")
     parser.add_argument("--strategy", type=str, required=True,
                         help="Training strategy (scratch, baseline, full_finetune, gradual_unfreeze)")
-    parser.add_argument("--config", type=str, required=True,
-                        help="Path to config file used during training")
     parser.add_argument("--output_dir", type=str, default=None,
                         help="Directory to save evaluation results (default: auto-generated)")
     parser.add_argument("--split", type=str, default="test", choices=["test", "val", "train"],
@@ -638,7 +644,6 @@ if __name__ == "__main__":
         model_path=args.model_path,
         model_name=args.model,
         strategy=args.strategy,
-        config_path=args.config,
         output_dir=output_dir,
         dataset_split=args.split
     )
