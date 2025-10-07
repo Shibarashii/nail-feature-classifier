@@ -712,7 +712,15 @@ def evaluate_model(
     ml_metrics = compute_ml_metrics(y_true, y_pred, class_names)
     medical_metrics = compute_medical_metrics(y_true, y_pred, class_names)
 
-    # Combine all metrics
+    # Load training history
+    history = load_history(str(history_path))
+
+    # Find epoch with lowest validation loss
+    min_val_loss_epoch = min(history, key=lambda x: x['val_loss'])
+    lowest_val_loss = min_val_loss_epoch['val_loss']
+    epoch_of_lowest_val_loss = min_val_loss_epoch['epoch']
+
+    # Combine all metrics (including lowest_val_loss)
     all_metrics = {
         'model_name': model_name,
         'strategy': strategy,
@@ -720,8 +728,10 @@ def evaluate_model(
         'num_samples': int(len(y_true)),
         'num_classes': int(num_classes),
         'class_names': class_names,
+        'lowest_val_loss': float(lowest_val_loss),
+        'epoch_of_lowest_val_loss': int(epoch_of_lowest_val_loss),
         'ml_metrics': ml_metrics,
-        'medical_metrics': medical_metrics
+        'medical_metrics': medical_metrics,
     }
 
     # Save metrics
