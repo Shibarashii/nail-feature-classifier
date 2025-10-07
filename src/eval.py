@@ -424,6 +424,7 @@ def plot_roc_curves(y_true, y_probs, class_names, save_path):
 def plot_training_history(history, save_dir):
     """
     Plot training and validation loss, accuracy, and learning rate over epochs.
+    Adds a universal plot with all metrics combined.
 
     Parameters
     ----------
@@ -478,13 +479,52 @@ def plot_training_history(history, save_dir):
     plt.xlabel('Epoch', fontsize=12)
     plt.ylabel('Learning Rate', fontsize=12)
     plt.title('Learning Rate Schedule', fontsize=14)
-    plt.yscale('log')  # Log scale for better visualization
+    plt.yscale('log')
     plt.legend()
     plt.grid(alpha=0.3)
     plt.tight_layout()
     plt.savefig(save_dir / 'lr_curve.png', dpi=300, bbox_inches='tight')
     plt.close()
     print(f"✓ Learning rate curve saved to: {save_dir / 'lr_curve.png'}")
+
+    # Universal training history with subplots
+    fig, axs = plt.subplots(3, 1, figsize=(12, 15), sharex=True)
+
+    # Loss subplot
+    axs[0].plot(epochs, train_loss, label='Train Loss',
+                marker='o', markersize=3)
+    axs[0].plot(epochs, val_loss, label='Val Loss', marker='o', markersize=3)
+    axs[0].set_ylabel('Loss', fontsize=12)
+    axs[0].set_title('Training and Validation Loss', fontsize=14)
+    axs[0].legend()
+    axs[0].grid(alpha=0.3)
+
+    # Accuracy subplot
+    axs[1].plot(epochs, train_acc, label='Train Accuracy',
+                marker='x', markersize=3)
+    axs[1].plot(epochs, val_acc, label='Val Accuracy',
+                marker='x', markersize=3)
+    axs[1].set_ylabel('Accuracy', fontsize=12)
+    axs[1].set_title('Training and Validation Accuracy', fontsize=14)
+    axs[1].legend()
+    axs[1].grid(alpha=0.3)
+
+    # Learning rate subplot
+    axs[2].plot(epochs, lrs, label='Learning Rate',
+                marker='s', markersize=3, color='purple')
+    axs[2].set_xlabel('Epoch', fontsize=12)
+    axs[2].set_ylabel('Learning Rate', fontsize=12)
+    axs[2].set_title('Learning Rate Schedule', fontsize=14)
+    axs[2].set_yscale('log')  # Keep log scale to show small changes clearly
+    axs[2].legend()
+    axs[2].grid(alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig(save_dir / 'training_history.png',
+                dpi=300, bbox_inches='tight')
+    plt.close()
+    print(
+        f"✓ Universal training history saved to: {save_dir / 'training_history.png'}")
 
 
 def save_metrics_to_json(metrics, save_path):
