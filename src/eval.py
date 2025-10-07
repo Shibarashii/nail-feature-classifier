@@ -532,7 +532,7 @@ def evaluate_model(
     class_names = [
         "Melanonychia",  # 1
         "Beau's Lines",  # 2
-        "Blue Finger",  # 3
+        "Blue Nail",  # 3
         "Clubbing",  # 4
         "Healthy Nail",  # 5
         "Koilonychia",  # 6
