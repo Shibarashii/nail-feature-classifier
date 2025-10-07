@@ -777,11 +777,33 @@ Example usage:
                         help="Path to experiment directory (containing best_model.pth and history.json)")
     parser.add_argument("--split", type=str, default="test", choices=["test", "val", "train"],
                         help="Dataset split to evaluate on (default: test)")
+    parser.add_argument("--all", action="store_true",
+                        help="Evaluate all models under the given path recursively")
 
     args = parser.parse_args()
 
-    # Run evaluation
-    evaluate_model(
-        experiment_path=args.path,
-        dataset_split=args.split
-    )
+    path = Path(args.path)
+
+    if args.all:
+        # Find all subdirectories with best_model.pth and history.json
+        experiment_dirs = []
+        for subdir in path.rglob("*"):
+            if subdir.is_dir() and (subdir / "best_model.pth").exists() and (subdir / "history.json").exists():
+                experiment_dirs.append(subdir)
+
+        if not experiment_dirs:
+            print(
+                f"❌ No experiments with best_model.pth + history.json found under {path}")
+        else:
+            print(
+                f"✅ Found {len(experiment_dirs)} experiments. Evaluating all...")
+            for exp_dir in experiment_dirs:
+                print(f"\n🔹 Evaluating {exp_dir}")
+                evaluate_model(experiment_path=str(
+                    exp_dir), dataset_split=args.split)
+    else:
+        # Single experiment evaluation
+        evaluate_model(
+            experiment_path=str(path),
+            dataset_split=args.split
+        )
