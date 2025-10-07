@@ -17,7 +17,7 @@ This script evaluates a trained model on a dataset split (test, val, or train) a
 ### Example Usage
 
 ```bash
-python -m src.eval --model_path "PATH/TO/MODEL.pth" --model efficientnetv2s --strategy full_finetune
+python -m src.eval "PATH/TO/MODEL.pth"
 ```
 
 ## `download_models.py`

@@ -67,6 +67,26 @@ def load_model(model_path: str, model_name: str, strategy: str, num_classes: int
     return model
 
 
+def load_history(history_path: str):
+    """
+    Load training history from JSON file.
+
+    Parameters
+    ----------
+    history_path : str
+        Path to the history JSON file.
+
+    Returns
+    -------
+    history : list of dict
+        Training history containing epoch metrics.
+    """
+    with open(history_path, 'r') as f:
+        history = json.load(f)
+    print(f"✓ Training history loaded from: {history_path}")
+    return history
+
+
 def get_predictions(model, dataloader, device):
     """
     Get predictions and true labels from the model.
@@ -125,8 +145,6 @@ def compute_ml_metrics(y_true, y_pred, class_names):
         Predicted labels.
     class_names : list
         List of class names.
-    average : str
-        Averaging method for multi-class metrics ('micro', 'macro', 'weighted').
 
     Returns
     -------
@@ -403,6 +421,72 @@ def plot_roc_curves(y_true, y_probs, class_names, save_path):
     print(f"✓ ROC curves saved to: {save_path}")
 
 
+def plot_training_history(history, save_dir):
+    """
+    Plot training and validation loss, accuracy, and learning rate over epochs.
+
+    Parameters
+    ----------
+    history : list of dicts
+        Training log, each dict containing epoch, train_loss, val_loss, train_acc, val_acc, lr
+    save_dir : str or Path
+        Directory to save plots
+    """
+    save_dir = Path(save_dir)
+    save_dir.mkdir(parents=True, exist_ok=True)
+
+    epochs = [h['epoch'] for h in history]
+    train_loss = [h['train_loss'] for h in history]
+    val_loss = [h['val_loss'] for h in history]
+    train_acc = [h['train_acc'] for h in history]
+    val_acc = [h['val_acc'] for h in history]
+    lrs = [h['lr'] for h in history]
+
+    # Loss plot
+    plt.figure(figsize=(10, 6))
+    plt.plot(epochs, train_loss, label='Train Loss', marker='o', markersize=3)
+    plt.plot(epochs, val_loss, label='Val Loss', marker='o', markersize=3)
+    plt.xlabel('Epoch', fontsize=12)
+    plt.ylabel('Loss', fontsize=12)
+    plt.title('Training and Validation Loss', fontsize=14)
+    plt.legend()
+    plt.grid(alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(save_dir / 'loss_curve.png', dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"✓ Loss curve saved to: {save_dir / 'loss_curve.png'}")
+
+    # Accuracy plot
+    plt.figure(figsize=(10, 6))
+    plt.plot(epochs, train_acc, label='Train Accuracy',
+             marker='o', markersize=3)
+    plt.plot(epochs, val_acc, label='Val Accuracy', marker='o', markersize=3)
+    plt.xlabel('Epoch', fontsize=12)
+    plt.ylabel('Accuracy', fontsize=12)
+    plt.title('Training and Validation Accuracy', fontsize=14)
+    plt.legend()
+    plt.grid(alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(save_dir / 'accuracy_curve.png', dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"✓ Accuracy curve saved to: {save_dir / 'accuracy_curve.png'}")
+
+    # Learning rate plot
+    plt.figure(figsize=(10, 6))
+    plt.plot(epochs, lrs, label='Learning Rate',
+             marker='o', markersize=3, color='purple')
+    plt.xlabel('Epoch', fontsize=12)
+    plt.ylabel('Learning Rate', fontsize=12)
+    plt.title('Learning Rate Schedule', fontsize=14)
+    plt.yscale('log')  # Log scale for better visualization
+    plt.legend()
+    plt.grid(alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(save_dir / 'lr_curve.png', dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"✓ Learning rate curve saved to: {save_dir / 'lr_curve.png'}")
+
+
 def save_metrics_to_json(metrics, save_path):
     """
     Save metrics dictionary to JSON file.
@@ -475,10 +559,7 @@ def print_summary(ml_metrics, medical_metrics, class_names):
 
 
 def evaluate_model(
-    model_path: str,
-    model_name: str,
-    strategy: str,
-    output_dir: str,
+    experiment_path: str,
     dataset_split: str = 'test'
 ):
     """
@@ -486,22 +567,31 @@ def evaluate_model(
 
     Parameters
     ----------
-    model_path : str
-        Path to the model checkpoint.
+    experiment_path : str
+        Path to the experiment directory containing best_model.pth and history.json
     model_name : str
         Name of the model architecture.
     strategy : str
         Training strategy used.
-    config_path : str
-        Path to the config file used during training.
-    output_dir : str
-        Directory to save evaluation results.
     dataset_split : str
         Which dataset split to evaluate on ('test', 'val', 'train').
     """
-    # Setup
+    # Setup paths
+    experiment_dir = Path(experiment_path)
+    model_path = experiment_dir / "best_model.pth"
+    history_path = experiment_dir / "history.json"
+    output_dir = experiment_dir / "evaluation"
+
+    # Validate paths
+    if not model_path.exists():
+        raise FileNotFoundError(f"Model not found: {model_path}")
+    if not history_path.exists():
+        raise FileNotFoundError(f"History not found: {history_path}")
+
+    # Setup device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
+    print(f"Experiment directory: {experiment_dir}")
 
     # Load YAML config
     config_path = get_root_dir() / "src" / "configs" / "eval.yaml"
@@ -515,14 +605,12 @@ def evaluate_model(
     set_seed(SEED)
 
     # Create output directory
-    output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     # Load data
     print("\n📁 Loading dataset...")
     train_loader, val_loader, test_loader, _, class_to_idx, num_classes = create_dataloaders(
-        train_transform=get_test_transforms(
-            test_run=test_run),  # Use test transforms
+        train_transform=get_test_transforms(test_run=test_run),
         test_transform=get_test_transforms(test_run=test_run),
         batch_size=BATCH_SIZE,
         num_workers=os.cpu_count(),
@@ -530,16 +618,16 @@ def evaluate_model(
     )
 
     class_names = [
-        "Melanonychia",  # 1
-        "Beau's Lines",  # 2
-        "Blue Nail",  # 3
-        "Clubbing",  # 4
-        "Healthy Nail",  # 5
-        "Koilonychia",  # 6
-        "Muehrcke's Lines",  # 7
-        "Onychogryphosis",  # 8
-        "Pitting",  # 9
-        "Terry's Nails"  # 10
+        "Melanonychia",
+        "Beau's Lines",
+        "Blue Nail",
+        "Clubbing",
+        "Healthy Nail",
+        "Koilonychia",
+        "Muehrcke's Lines",
+        "Onychogryphosis",
+        "Pitting",
+        "Terry's Nails"
     ]
 
     # Select dataloader based on split
@@ -559,7 +647,20 @@ def evaluate_model(
 
     # Load model
     print(f"\n🔧 Loading model...")
-    model = load_model(model_path, model_name, strategy, num_classes, device)
+    # Automatically infer model_name and strategy from folder structure
+    try:
+        strategy = experiment_dir.parent.name
+        model_name = experiment_dir.parent.parent.name
+    except IndexError:
+        raise ValueError(
+            f"Cannot infer model_name and strategy from path: {experiment_path}")
+
+    model = load_model(str(model_path), model_name,
+                       strategy, num_classes, device)
+
+    # Load training history
+    print(f"\n📜 Loading training history...")
+    history = load_history(str(history_path))
 
     # Get predictions
     print(f"\n🔮 Generating predictions...")
@@ -584,31 +685,36 @@ def evaluate_model(
     }
 
     # Save metrics
-    metrics_path = output_path / 'metrics.json'
+    metrics_path = output_dir / 'metrics.json'
     save_metrics_to_json(all_metrics, str(metrics_path))
 
     # Generate plots
     print(f"\n📈 Generating visualizations...")
+
+    # Training history plots
+    plot_training_history(history, output_dir)
+
+    # Evaluation plots
     cm = np.array(ml_metrics['confusion_matrix'])
 
     plot_confusion_matrix(
         cm, class_names,
-        str(output_path / 'confusion_matrix.png')
+        str(output_dir / 'confusion_matrix.png')
     )
 
     plot_normalized_confusion_matrix(
         cm, class_names,
-        str(output_path / 'confusion_matrix_normalized.png')
+        str(output_dir / 'confusion_matrix_normalized.png')
     )
 
     plot_per_class_metrics(
         ml_metrics, class_names,
-        str(output_path / 'per_class_metrics.png')
+        str(output_dir / 'per_class_metrics.png')
     )
 
     plot_roc_curves(
         y_true, y_probs, class_names,
-        str(output_path / 'roc_curves.png')
+        str(output_dir / 'roc_curves.png')
     )
 
     # Print summary
@@ -618,32 +724,24 @@ def evaluate_model(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Evaluate a trained model")
-    parser.add_argument("--model_path", type=str, required=True,
-                        help="Path to model checkpoint (.pth file)")
-    parser.add_argument("--model", type=str, required=True,
-                        help="Model name (efficientnetv2s, resnet50, etc.)")
-    parser.add_argument("--strategy", type=str, required=True,
-                        help="Training strategy (scratch, baseline, full_finetune, gradual_unfreeze)")
-    parser.add_argument("--output_dir", type=str, default=None,
-                        help="Directory to save evaluation results (default: auto-generated)")
+    parser = argparse.ArgumentParser(
+        description="Evaluate a trained model",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Example usage:
+  python -m src.eval --path outputs/swinv2t_gradual_unfreeze --model swinv2t --strategy gradual_unfreeze
+  python -m src.eval --path outputs/resnet50_baseline --model resnet50 --strategy baseline --split val
+        """
+    )
+    parser.add_argument("path", type=str,
+                        help="Path to experiment directory (containing best_model.pth and history.json)")
     parser.add_argument("--split", type=str, default="test", choices=["test", "val", "train"],
                         help="Dataset split to evaluate on (default: test)")
 
     args = parser.parse_args()
 
-    # Auto-generate output directory if not provided
-    if args.output_dir is None:
-        model_path = Path(args.model_path)
-        output_dir = model_path.parent / f"eval_{model_path.stem}"
-    else:
-        output_dir = args.output_dir
-
     # Run evaluation
     evaluate_model(
-        model_path=args.model_path,
-        model_name=args.model,
-        strategy=args.strategy,
-        output_dir=output_dir,
+        experiment_path=args.path,
         dataset_split=args.split
     )
