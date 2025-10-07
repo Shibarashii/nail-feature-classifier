@@ -37,35 +37,34 @@ def generate_gradcam(model, model_name: str, pred_idx, img_tensor, original_imag
     Returns:
         np.ndarray: RGB image with Grad-CAM overlay (values 0-255)
     """
-    # Enable gradients for all layers (needed for models trained with frozen layers)
-    for param in model.parameters():
-        param.requires_grad = True
-
-    # Get target layer and reshape function
-    target_layer, reshape_transform = get_gradcam_config(
-        model_name.lower(), model)
-
-    # Initialize GradCAM
-    cam = GradCAM(
-        model=model,
-        target_layers=[target_layer],
-        reshape_transform=reshape_transform,
-    )
-
-    # Ensure model is in eval mode
-    model.eval()
-
-    # Run Grad-CAM with respect to the predicted class
-    grayscale_cam = cam(
-        input_tensor=img_tensor,
-        targets=[ClassifierOutputTarget(pred_idx)]
-    )[0]
-
     # Prepare the original image (convert to float32 and normalize)
     rgb_img = np.array(original_image.resize(
         (224, 224)), dtype=np.float32) / 255.0
 
-    # Overlay CAM and return as RGB image
-    cam_img = show_cam_on_image(rgb_img, grayscale_cam, use_rgb=True)
+    try:
+        # Get target layer and reshape function
+        target_layer, reshape_transform = get_gradcam_config(
+            model_name.lower(), model)
+
+        # Initialize GradCAM
+        cam = GradCAM(
+            model=model,
+            target_layers=[target_layer],
+            reshape_transform=reshape_transform,
+        )
+        # Run Grad-CAM with respect to the predicted class
+        grayscale_cam = cam(
+            input_tensor=img_tensor,
+            targets=[ClassifierOutputTarget(pred_idx)]
+        )[0]
+        # Overlay CAM and return as RGB image
+        cam_img = show_cam_on_image(rgb_img, grayscale_cam, use_rgb=True)
+
+    except Exception as e:
+        print(f"Grad-CAM failed: {e}")
+        cam_img = rgb_img  # fallback
+
+    # Ensure model is in eval mode
+    model.eval()
 
     return rgb_img, cam_img
