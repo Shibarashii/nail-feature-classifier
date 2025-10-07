@@ -47,12 +47,10 @@ def run_model(model: nn.Module, model_name: str, strategy: str):
     scheduler_params = config.get("scheduler_params", {})
     scheduler = ReduceLROnPlateau(optimizer, **scheduler_params)
 
-    # Setup gradual unfreezing if needed
     layer_groups = None
     unfreeze_schedule = None
 
     if strategy == "gradual_unfreeze":
-        # Import the get_layer_groups function from the appropriate model file
         if model_name == "efficientnetv2s":
             from src.models.efficientnetv2s import get_layer_groups
         elif model_name == "convnexttiny":
@@ -148,5 +146,4 @@ if __name__ == "__main__":
     # Get model based on CLI args
     model = get_model(args.model, args.strategy, num_classes=num_classes)
 
-    # Run training
     run_model(model, args.model, args.strategy)
