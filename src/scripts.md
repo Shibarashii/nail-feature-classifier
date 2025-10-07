@@ -17,7 +17,7 @@ This script evaluates a trained model on a dataset split (test, val, or train) a
 ### Example Usage
 
 ```bash
-python -m src.eval "PATH/TO/MODEL.pth"
+python -m src.eval PATH/TO/MODEL_FOLDER
 ```
 
 ## `download_models.py`
@@ -28,4 +28,14 @@ Downloads the models from the hugging face repository
 
 ```bash
 python -m src.utils.download_models
+```
+
+## `predict.py`
+
+Predicts an input image and visualizes the features using grad cam
+
+### Example usage
+
+```bash
+python -m src.predict.py PATH/TO/MODEL.pth PATH/TO/IMAGE
 ```

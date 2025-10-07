@@ -22,69 +22,15 @@ from sklearn.metrics import (
     roc_curve,
     auc,
 )
-import json
 
+import json
 from src.utils.helpers import get_root_dir
 from src.data.dataloaders import create_dataloaders
 from src.data.transforms import get_test_transforms
 from src.models.get_model import get_model
 from src.utils.seed import set_seed
-
-
-def load_model(model_path: str, model_name: str, strategy: str, num_classes: int, device: torch.device):
-    """
-    Load a trained model from checkpoint.
-
-    Parameters
-    ----------
-    model_path : str
-        Path to the model checkpoint (.pth file).
-    model_name : str
-        Name of the model architecture.
-    strategy : str
-        Training strategy used.
-    num_classes : int
-        Number of output classes.
-    device : torch.device
-        Device to load the model on.
-
-    Returns
-    -------
-    model : torch.nn.Module
-        Loaded model in evaluation mode.
-    """
-    # Get model architecture
-    model = get_model(model_name, strategy, num_classes)
-
-    # Load weights
-    checkpoint = torch.load(model_path, map_location=device)
-    model.load_state_dict(checkpoint)
-
-    model = model.to(device)
-    model.eval()
-
-    print(f"✓ Model loaded from: {model_path}")
-    return model
-
-
-def load_history(history_path: str):
-    """
-    Load training history from JSON file.
-
-    Parameters
-    ----------
-    history_path : str
-        Path to the history JSON file.
-
-    Returns
-    -------
-    history : list of dict
-        Training history containing epoch metrics.
-    """
-    with open(history_path, 'r') as f:
-        history = json.load(f)
-    print(f"✓ Training history loaded from: {history_path}")
-    return history
+from src.utils.helpers import load_model, load_history
+from src.data.dataloaders import get_class_names
 
 
 def get_predictions(model, dataloader, device):
@@ -657,18 +603,7 @@ def evaluate_model(
         test_run=test_run
     )
 
-    class_names = [
-        "Melanonychia",
-        "Beau's Lines",
-        "Blue Nail",
-        "Clubbing",
-        "Healthy Nail",
-        "Koilonychia",
-        "Muehrcke's Lines",
-        "Onychogryphosis",
-        "Pitting",
-        "Terry's Nails"
-    ]
+    class_names = get_class_names()
 
     # Select dataloader based on split
     if dataset_split == 'test':

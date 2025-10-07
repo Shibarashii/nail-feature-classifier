@@ -66,3 +66,18 @@ def create_dataloaders(
     )
 
     return train_dataloader, val_dataloader, test_dataloader, class_names, class_to_idx, num_classes
+
+
+def get_class_names():
+    return [
+        "Melanonychia",
+        "Beau's Lines",
+        "Blue Nail",
+        "Clubbing",
+        "Healthy Nail",
+        "Koilonychia",
+        "Muehrcke's Lines",
+        "Onychogryphosis",
+        "Pitting",
+        "Terry's Nails"
+    ]
