@@ -173,7 +173,6 @@ def main(model_path, image_path, save_dir="src/predictions"):
         device=device,
         generate_gradcam_viz=True
     )
-    print(result)
     # Print prediction
     print(
         f"[PREDICTION] {result['pred_class']} ({result['confidence']*100:.2f}%)")
@@ -190,10 +189,10 @@ def main(model_path, image_path, save_dir="src/predictions"):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Predict and optionally visualize Grad-CAM")
-    parser.add_argument("model_path", type=str,
-                        help="Path to the model weights (.pth file)")
     parser.add_argument("image_path", type=str,
                         help="Path to the input image")
+    parser.add_argument("model_path", type=str,
+                        help="Path to the model weights (.pth file)")
     parser.add_argument("--save_dir", type=str,
                         default="src/predictions", help="Directory to save outputs")
     args = parser.parse_args()
