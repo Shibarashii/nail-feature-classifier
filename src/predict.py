@@ -19,7 +19,7 @@ def preprocess_image(image_path):
     return img, img_tensor
 
 
-def predict_single(model_path, image_path, device, generate_gradcam_viz=True):
+def predict_single(model_path, image_path, device, generate_gradcam_viz=True, model_name=None):
     """
     Perform single image prediction with optional Grad-CAM generation.
 
@@ -28,6 +28,7 @@ def predict_single(model_path, image_path, device, generate_gradcam_viz=True):
         image_path (str/Path): Path to the input image
         device (torch.device): Device to run inference on
         generate_gradcam_viz (bool): Whether to generate Grad-CAM visualization
+        model_name (str, optional): Model name (if not provided, inferred from path)
 
     Returns:
         dict: Dictionary containing:
@@ -46,13 +47,23 @@ def predict_single(model_path, image_path, device, generate_gradcam_viz=True):
     if not model_path.exists():
         raise FileNotFoundError(f"Model not found: {model_path}")
 
-    # Infer model name and strategy from path
-    try:
-        strategy = model_path.parent.parent.name
-        model_name = model_path.parent.parent.parent.name
-    except IndexError:
-        raise ValueError(
-            f"Cannot infer model_name and strategy from path: {model_path}")
+    # Infer model name and strategy from path if not provided
+    if model_name is None:
+        try:
+            # Check if path matches: src/best_models/{model_name}/best_model.pth
+            if model_path.parent.parent.name == "best_models":
+                model_name = model_path.parent.name
+                strategy = "best_model"  # For best_models, we use a generic strategy
+            else:
+                # Legacy path: src/output/{model_name}/{strategy}/{timestamp}/best_model.pth
+                strategy = model_path.parent.parent.name
+                model_name = model_path.parent.parent.parent.name
+        except IndexError:
+            raise ValueError(
+                f"Cannot infer model_name and strategy from path: {model_path}")
+    else:
+        # If model_name is provided, use generic strategy
+        strategy = "best_model"
 
     # Load classes
     class_names = get_class_names()
@@ -153,18 +164,69 @@ def visualize_prediction(result, image_path, save_dir="src/predictions"):
     return save_path
 
 
-def main(model_path, image_path, save_dir="src/predictions"):
+def resolve_paths(image_name, model_name):
+    """
+    Resolve simple names to full paths.
+
+    Args:
+        image_name (str): Image filename (e.g., 'image.png')
+        model_name (str): Model name (e.g., 'efficientnetv2s', 'swinv2t')
+
+    Returns:
+        tuple: (image_path, model_path) as Path objects
+
+    Raises:
+        FileNotFoundError: If paths cannot be resolved
+    """
+    # Resolve image path
+    image_path = Path("data") / image_name
+    if not image_path.exists():
+        raise FileNotFoundError(f"Image not found: {image_path}")
+
+    # Resolve model path
+    model_path = Path("src/best_models") / model_name / "best_model.pth"
+    if not model_path.exists():
+        # List available models for helpful error message
+        best_models_dir = Path("src/best_models")
+        if best_models_dir.exists():
+            available = [d.name for d in best_models_dir.iterdir()
+                         if d.is_dir()]
+            raise FileNotFoundError(
+                f"Model not found: {model_path}\n"
+                f"Available models: {', '.join(available)}"
+            )
+        else:
+            raise FileNotFoundError(
+                f"Model directory not found: {best_models_dir}")
+
+    return image_path, model_path
+
+
+def main(image_path=None, model_path=None, image_name=None, model_name=None, save_dir="src/predictions"):
     """
     Main function for prediction with visualization and printing.
 
     Args:
-        model_path (str/Path): Path to the model weights
-        image_path (str/Path): Path to the input image
+        image_path (str/Path): Full path to the input image (old method)
+        model_path (str/Path): Full path to the model weights (old method)
+        image_name (str): Simple image filename (new method)
+        model_name (str): Simple model name (new method)
         save_dir (str/Path): Directory to save outputs
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     print(f"\n🔧 Loading model...")
+
+    # Resolve paths based on which arguments were provided
+    if image_name and model_name:
+        # New simplified method
+        image_path, model_path = resolve_paths(image_name, model_name)
+    elif not (image_path and model_path):
+        raise ValueError(
+            "Must provide either:\n"
+            "  - image_name and model_name (simplified), or\n"
+            "  - image_path and model_path (full paths)"
+        )
 
     # Get prediction results
     result = predict_single(
@@ -173,6 +235,7 @@ def main(model_path, image_path, save_dir="src/predictions"):
         device=device,
         generate_gradcam_viz=True
     )
+
     # Print prediction
     print(
         f"[PREDICTION] {result['pred_class']} ({result['confidence']*100:.2f}%)")
@@ -188,13 +251,55 @@ def main(model_path, image_path, save_dir="src/predictions"):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Predict and optionally visualize Grad-CAM")
-    parser.add_argument("image_path", type=str,
-                        help="Path to the input image")
-    parser.add_argument("model_path", type=str,
-                        help="Path to the model weights (.pth file)")
-    parser.add_argument("--save_dir", type=str,
+        description="Predict and optionally visualize Grad-CAM",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Simplified usage (recommended):
+  python -m src.predict image.png efficientnetv2s
+  python -m src.predict nail_photo.jpg swinv2t
+  
+  # Full path usage (legacy):
+  python -m src.predict --image-path data/image.png --model-path src/best_models/efficientnetv2s/best_model.pth
+        """
+    )
+
+    # Positional arguments for simplified usage
+    parser.add_argument("image", nargs="?", type=str,
+                        help="Image filename (in data/ directory)")
+    parser.add_argument("model", nargs="?", type=str,
+                        help="Model name (e.g., efficientnetv2s, swinv2t, resnet50)")
+
+    # Optional arguments for full path usage (legacy)
+    parser.add_argument("--image-path", type=str,
+                        help="Full path to the input image")
+    parser.add_argument("--model-path", type=str,
+                        help="Full path to the model weights (.pth file)")
+
+    parser.add_argument("--save-dir", type=str,
                         default="src/predictions", help="Directory to save outputs")
+
     args = parser.parse_args()
 
-    main(args.model_path, args.image_path, save_dir=args.save_dir)
+    # Determine which mode to use
+    if args.image and args.model:
+        # Simplified mode
+        main(
+            image_name=args.image,
+            model_name=args.model,
+            save_dir=args.save_dir
+        )
+    elif args.image_path and args.model_path:
+        # Legacy full path mode
+        main(
+            image_path=args.image_path,
+            model_path=args.model_path,
+            save_dir=args.save_dir
+        )
+    else:
+        parser.error(
+            "Must provide either:\n"
+            "  - IMAGE MODEL (simplified), or\n"
+            "  - --image-path and --model-path (full paths)\n"
+            "\nRun with -h for examples."
+        )

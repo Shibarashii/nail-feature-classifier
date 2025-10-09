@@ -113,7 +113,26 @@ def get_gradcam_config(model_name: str, model):
         return target_layer, reshape_transform_swin
 
     elif "convnext" in model_name:
-        return model.features[-1][-1].block[-1].layer_scale_2, None
+        # ConvNeXt specific configuration - use the last stage
+        if hasattr(model, 'features'):
+            # torchvision ConvNeXt: use entire last stage for better visualization
+            # Use stage before normalization/pooling
+            target_layer = model.features[-2]
+        elif hasattr(model, 'stages'):
+            # timm ConvNeXt
+            target_layer = model.stages[-1]
+        else:
+            # Final fallback: use the last convolutional layer
+            target_layer = None
+            for name, module in reversed(list(model.named_modules())):
+                if isinstance(module, torch.nn.Conv2d):
+                    target_layer = module
+                    break
+            if target_layer is None:
+                raise ValueError(
+                    "Could not find suitable target layer for ConvNeXt")
+
+        return target_layer, None
 
     else:
         raise ValueError(f"No Grad-CAM config for model '{model_name}'")
@@ -139,7 +158,7 @@ def generate_feature_map_visualization(model, model_name: str, img_tensor, origi
         hook = target_layer.register_forward_hook(hook_fn)
 
         # Forward pass
-        with torch.inference_mode():
+        with torch.no_grad():
             _ = model(img_tensor)
 
         hook.remove()
@@ -217,7 +236,7 @@ def generate_attention_rollout(model, img_tensor, original_image):
                     hooks.append(module.register_forward_hook(hook_fn))
 
         # Forward pass
-        with torch.inference_mode():
+        with torch.no_grad():
             _ = model(img_tensor)
 
         # Remove hooks
@@ -256,9 +275,39 @@ def generate_attention_rollout(model, img_tensor, original_image):
         return None, None
 
 
+def generate_gradcam_plusplus(model, model_name: str, pred_idx, img_tensor, original_image, device):
+    """
+    Generate GradCAM++ visualization - faster than ScoreCAM, more robust than GradCAM.
+    """
+    rgb_img = np.array(original_image.resize(
+        (224, 224)), dtype=np.float32) / 255.0
+
+    try:
+        target_layer, reshape_transform = get_gradcam_config(
+            model_name.lower(), model)
+
+        cam = GradCAMPlusPlus(
+            model=model,
+            target_layers=[target_layer],
+            reshape_transform=reshape_transform,
+        )
+
+        grayscale_cam = cam(
+            input_tensor=img_tensor,
+            targets=[ClassifierOutputTarget(pred_idx)]
+        )[0]
+
+        cam_img = show_cam_on_image(rgb_img, grayscale_cam, use_rgb=True)
+        return rgb_img, cam_img
+
+    except Exception as e:
+        print(f"✗ GradCAM++ failed: {e}")
+        return None, None
+
+
 def generate_scorecam(model, model_name: str, pred_idx, img_tensor, original_image, device):
     """
-    Generate ScoreCAM visualization - more reliable for transformers.
+    Generate ScoreCAM visualization - more reliable for transformers but slower.
     """
     rgb_img = np.array(original_image.resize(
         (224, 224)), dtype=np.float32) / 255.0
@@ -317,6 +366,38 @@ def generate_ablationcam(model, model_name: str, pred_idx, img_tensor, original_
         return None, None
 
 
+def generate_layercam(model, model_name: str, pred_idx, img_tensor, original_image, device):
+    """
+    Generate LayerCAM visualization - fast gradient-based method.
+    """
+    from pytorch_grad_cam import LayerCAM
+
+    rgb_img = np.array(original_image.resize(
+        (224, 224)), dtype=np.float32) / 255.0
+
+    try:
+        target_layer, reshape_transform = get_gradcam_config(
+            model_name.lower(), model)
+
+        cam = LayerCAM(
+            model=model,
+            target_layers=[target_layer],
+            reshape_transform=reshape_transform,
+        )
+
+        grayscale_cam = cam(
+            input_tensor=img_tensor,
+            targets=[ClassifierOutputTarget(pred_idx)]
+        )[0]
+
+        cam_img = show_cam_on_image(rgb_img, grayscale_cam, use_rgb=True)
+        return rgb_img, cam_img
+
+    except Exception as e:
+        print(f"✗ LayerCAM failed: {e}")
+        return None, None
+
+
 def generate_gradcam(model, model_name: str, pred_idx, img_tensor, original_image, device):
     """
     Generates and returns a Grad-CAM visualization with fallback methods.
@@ -333,15 +414,16 @@ def generate_gradcam(model, model_name: str, pred_idx, img_tensor, original_imag
     if "swinv2" in model_name.lower() or "swin_v2" in model_name.lower():
         print("🔍 Generating Grad-CAM for SwinV2...")
 
+        # Ordered by speed: fastest to slowest
         methods = [
-            ("ScoreCAM", lambda: generate_scorecam(model, model_name,
+            ("GradCAM++", lambda: generate_gradcam_plusplus(model,
+             model_name, pred_idx, img_tensor, original_image, device)),
+            ("LayerCAM", lambda: generate_layercam(model, model_name,
              pred_idx, img_tensor, original_image, device)),
             ("Feature Map", lambda: generate_feature_map_visualization(
                 model, model_name, img_tensor, original_image)),
-            ("Attention Rollout", lambda: generate_attention_rollout(
-                model, img_tensor, original_image)),
-            ("AblationCAM", lambda: generate_ablationcam(
-                model, model_name, pred_idx, img_tensor, original_image, device)),
+            ("ScoreCAM", lambda: generate_scorecam(model, model_name,
+             pred_idx, img_tensor, original_image, device)),
         ]
 
         for method_name, method_func in methods:
