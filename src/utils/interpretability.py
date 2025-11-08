@@ -53,25 +53,40 @@ def get_gradcam_config(model_name: str, model):
             else:
                 raise ValueError(f"Unexpected tensor shape: {tensor.shape}")
 
-        # Find the best target layer
+        # Find the best target layer - use an earlier layer for better localization
         target_layer = None
 
         # Try multiple possible paths
         try:
             if hasattr(model, 'features'):
-                # torchvision style
-                if hasattr(model.features[-1], 'blocks') or hasattr(model.features[-1], 'SwinTransformerBlockV2'):
-                    # Get the last block
+                # torchvision style - use second-to-last stage for better features
+                # features[-1] is the last stage, features[-2] might be better
+                if len(model.features) > 1:
+                    # Try the last transformer block in the second-to-last stage
+                    second_last_stage = model.features[-2]
+                    if hasattr(second_last_stage, 'blocks') or hasattr(second_last_stage, 'SwinTransformerBlockV2'):
+                        if hasattr(second_last_stage, 'SwinTransformerBlockV2'):
+                            target_layer = second_last_stage.SwinTransformerBlockV2[-1]
+                        elif hasattr(second_last_stage, 'blocks'):
+                            target_layer = second_last_stage.blocks[-1]
+
+                # Fallback to last stage if second-to-last didn't work
+                if target_layer is None:
                     last_stage = model.features[-1]
-                    if hasattr(last_stage, 'SwinTransformerBlockV2'):
-                        target_layer = last_stage.SwinTransformerBlockV2[-1]
-                    elif hasattr(last_stage, 'blocks'):
-                        target_layer = last_stage.blocks[-1]
-                else:
-                    target_layer = model.features[-1]
+                    if hasattr(last_stage, 'blocks') or hasattr(last_stage, 'SwinTransformerBlockV2'):
+                        if hasattr(last_stage, 'SwinTransformerBlockV2'):
+                            target_layer = last_stage.SwinTransformerBlockV2[-1]
+                        elif hasattr(last_stage, 'blocks'):
+                            target_layer = last_stage.blocks[-1]
+                    else:
+                        target_layer = model.features[-1]
+
             elif hasattr(model, 'layers'):
-                # timm style
-                target_layer = model.layers[-1].blocks[-1]
+                # timm style - also try second-to-last
+                if len(model.layers) > 1:
+                    target_layer = model.layers[-2].blocks[-1]
+                else:
+                    target_layer = model.layers[-1].blocks[-1]
         except Exception as e:
             print(f"Warning: Could not find optimal layer structure: {e}")
 
@@ -398,6 +413,89 @@ def generate_layercam(model, model_name: str, pred_idx, img_tensor, original_ima
         return None, None
 
 
+def generate_all_cams(model, model_name: str, pred_idx, img_tensor, original_image, device):
+    """
+    Generate all available CAM visualizations for comprehensive analysis.
+
+    Args:
+        model: PyTorch model
+        model_name (str): Name of the model
+        pred_idx (int): Predicted class index
+        img_tensor (torch.Tensor): Input image tensor
+        original_image (PIL.Image): Original image
+        device: Device to run on
+
+    Returns:
+        dict: Dictionary mapping method name -> visualization image
+    """
+    rgb_img = np.array(original_image.resize(
+        (224, 224)), dtype=np.float32) / 255.0
+    model.eval()
+
+    # Only fast gradient-based methods
+    methods = [
+        ("GradCAM", lambda: generate_gradcam_standard(
+            model, model_name, pred_idx, img_tensor, original_image, device)),
+        ("GradCAM++", lambda: generate_gradcam_plusplus(model,
+         model_name, pred_idx, img_tensor, original_image, device)),
+        ("LayerCAM", lambda: generate_layercam(model, model_name,
+         pred_idx, img_tensor, original_image, device)),
+    ]
+
+    results = {}
+    print(f"\n{'Method':<20} {'Status':<10}")
+    print("-" * 30)
+
+    for method_name, method_func in methods:
+        try:
+            _, cam_img = method_func()
+            if cam_img is not None:
+                results[method_name] = cam_img
+                print(f"{method_name:<20} ✓")
+            else:
+                results[method_name] = None
+                print(f"{method_name:<20} ✗ (returned None)")
+        except Exception as e:
+            results[method_name] = None
+            print(f"{method_name:<20} ✗ ({str(e)[:30]}...)")
+
+    print("-" * 30)
+    successful = sum(1 for v in results.values() if v is not None)
+    print(
+        f"Successfully generated {successful}/{len(methods)} visualizations\n")
+
+    return results
+
+
+def generate_gradcam_standard(model, model_name: str, pred_idx, img_tensor, original_image, device):
+    """
+    Generate standard GradCAM visualization.
+    """
+    rgb_img = np.array(original_image.resize(
+        (224, 224)), dtype=np.float32) / 255.0
+
+    try:
+        target_layer, reshape_transform = get_gradcam_config(
+            model_name.lower(), model)
+
+        cam = GradCAM(
+            model=model,
+            target_layers=[target_layer],
+            reshape_transform=reshape_transform,
+        )
+
+        grayscale_cam = cam(
+            input_tensor=img_tensor,
+            targets=[ClassifierOutputTarget(pred_idx)]
+        )[0]
+
+        cam_img = show_cam_on_image(rgb_img, grayscale_cam, use_rgb=True)
+        return rgb_img, cam_img
+
+    except Exception as e:
+        return None, None
+
+
 def generate_gradcam(model, model_name: str, pred_idx, img_tensor, original_image, device):
     """
     Generates and returns a Grad-CAM visualization with fallback methods.
@@ -414,16 +512,14 @@ def generate_gradcam(model, model_name: str, pred_idx, img_tensor, original_imag
     if "swinv2" in model_name.lower() or "swin_v2" in model_name.lower():
         print("🔍 Generating Grad-CAM for SwinV2...")
 
-        # Ordered by speed: fastest to slowest
+        # Ordered by speed and reliability - all fast gradient-based methods
         methods = [
             ("GradCAM++", lambda: generate_gradcam_plusplus(model,
              model_name, pred_idx, img_tensor, original_image, device)),
             ("LayerCAM", lambda: generate_layercam(model, model_name,
              pred_idx, img_tensor, original_image, device)),
-            ("Feature Map", lambda: generate_feature_map_visualization(
-                model, model_name, img_tensor, original_image)),
-            ("ScoreCAM", lambda: generate_scorecam(model, model_name,
-             pred_idx, img_tensor, original_image, device)),
+            ("GradCAM", lambda: generate_gradcam_standard(
+                model, model_name, pred_idx, img_tensor, original_image, device)),
         ]
 
         for method_name, method_func in methods:
@@ -435,7 +531,7 @@ def generate_gradcam(model, model_name: str, pred_idx, img_tensor, original_imag
             except Exception as e:
                 print(f"⚠️  {method_name} failed, trying next method...")
 
-        print("\n⚠️  All specialized methods failed, using standard GradCAM...")
+        print("\n⚠️  All methods failed, returning original image...")
 
     # Standard GradCAM for other models or as final fallback
     try:

@@ -183,6 +183,21 @@ def plot_all_models_comparison(
     # Group by model and compute mean (in case of multiple runs/strategies)
     grouped = df.groupby('model_name')[metrics].mean().reset_index()
 
+    # Define model order mapping
+    model_order_map = {
+        'vgg16': 0,
+        'resnet50': 1,
+        'efficientnetv2s': 2,
+        'swinv2t': 3,
+        'convnexttiny': 4,
+    }
+
+    # Add sort key based on model order
+    grouped['sort_key'] = grouped['model_name'].str.lower().map(
+        lambda x: model_order_map.get(x, 999)
+    )
+    grouped = grouped.sort_values('sort_key').reset_index(drop=True)
+
     models = grouped['model_name'].tolist()
     metric_labels = {
         'accuracy': 'Accuracy',
@@ -322,6 +337,21 @@ def plot_binary_metrics_comparison(
         title_prefix = "All Models"
 
     grouped = df.groupby(group_col)[metrics].mean().reset_index()
+
+    # Apply model ordering if comparing models
+    if comparison_type == 'models':
+        model_order_map = {
+            'vgg16': 0,
+            'resnet50': 1,
+            'efficientnetv2s': 2,
+            'swinv2t': 3,
+            'convnexttiny': 4,
+        }
+        grouped['sort_key'] = grouped[group_col].str.lower().map(
+            lambda x: model_order_map.get(x, 999)
+        )
+        grouped = grouped.sort_values('sort_key').reset_index(drop=True)
+
     groups = grouped[group_col].tolist()
 
     metric_labels = {
