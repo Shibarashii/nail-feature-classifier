@@ -255,7 +255,7 @@ def visualize_prediction(result, image_path, save_dir="src/predictions"):
 
 def visualize_all_cams(result, image_path, save_dir="src/predictions"):
     """
-    Visualize all CAM methods in a 2x2 grid.
+    Visualize all CAM methods in a 2x2 grid and save individual CAMs + metadata.
 
     Args:
         result (dict): Result from predict_with_all_cams()
@@ -263,14 +263,18 @@ def visualize_all_cams(result, image_path, save_dir="src/predictions"):
         save_dir (str/Path): Directory to save
 
     Returns:
-        Path: Path to saved visualization
+        dict: Paths to saved files
     """
     save_dir = Path(save_dir)
-    save_dir.mkdir(parents=True, exist_ok=True)
 
     if 'all_cams' not in result:
         raise ValueError(
             "Result does not contain all_cams. Use predict_with_all_cams()")
+
+    # Create folder structure: predictions/{image_name}/{model_name}/
+    image_name = Path(image_path).name
+    output_folder = save_dir / image_name / result['model_name']
+    output_folder.mkdir(parents=True, exist_ok=True)
 
     cam_results = result['all_cams']
     successful_cams = [(name, img)
@@ -280,7 +284,49 @@ def visualize_all_cams(result, image_path, save_dir="src/predictions"):
         print("⚠️  No CAM visualizations were successful")
         return None
 
-    # Fixed 2x2 grid layout
+    saved_paths = {}
+
+    # Save original image
+    original_path = output_folder / "original.png"
+    original_img = Image.fromarray((result['img'] * 255).astype(
+        np.uint8)) if isinstance(result['img'], np.ndarray) else result['img']
+    original_img.save(original_path)
+    saved_paths['original'] = original_path
+
+    # Save individual CAM images
+    for cam_name, cam_img in successful_cams:
+        cam_filename = f"{cam_name.lower().replace(' ', '_').replace('+', 'plus')}.png"
+        cam_path = output_folder / cam_filename
+        Image.fromarray(cam_img).save(cam_path)
+        saved_paths[cam_name] = cam_path
+
+    # Save prediction metadata as JSON
+    import json
+    metadata = {
+        "image_name": Path(image_path).name,
+        "model_name": result['model_name'],
+        "prediction": result['pred_class'],
+        "confidence": float(result['confidence']),
+        "all_predictions": {
+            result['class_names'][i]: float(result['probs'][0][i])
+            for i in range(len(result['class_names']))
+        },
+        "top_5_predictions": sorted(
+            [(result['class_names'][i], float(result['probs'][0][i]))
+             for i in range(len(result['class_names']))],
+            key=lambda x: x[1],
+            reverse=True
+        )[:5],
+        "cam_methods_generated": [name for name, _ in successful_cams],
+        "timestamp": str(Path(image_path).stat().st_mtime)
+    }
+
+    metadata_path = output_folder / "prediction_results.json"
+    with open(metadata_path, 'w') as f:
+        json.dump(metadata, f, indent=2)
+    saved_paths['metadata'] = metadata_path
+
+    # Create 2x2 grid visualization
     fig, axs = plt.subplots(2, 2, figsize=(12, 12))
     axs = axs.flatten()
 
@@ -294,12 +340,12 @@ def visualize_all_cams(result, image_path, save_dir="src/predictions"):
     )
 
     # Original image (top-left)
-    axs[0].imshow(result['img'])
+    axs[0].imshow(result['img'] if isinstance(
+        result['img'], np.ndarray) else np.array(result['img']))
     axs[0].axis('off')
     axs[0].set_title("Original Image", fontsize=14, fontweight='bold', pad=10)
 
     # CAM visualizations (remaining 3 positions)
-    # Max 3 CAMs
     for idx, (cam_name, cam_img) in enumerate(successful_cams[:3], 1):
         axs[idx].imshow(cam_img)
         axs[idx].axis('off')
@@ -312,13 +358,54 @@ def visualize_all_cams(result, image_path, save_dir="src/predictions"):
 
     plt.tight_layout()
 
-    # Save
-    save_path = save_dir / \
-        f"all_cams_{Path(image_path).stem}_{result['model_name']}.png"
-    plt.savefig(save_path, dpi=200, bbox_inches='tight')
+    # Save combined visualization
+    combined_path = output_folder / "all_cams_combined.png"
+    plt.savefig(combined_path, dpi=200, bbox_inches='tight')
     plt.close()
+    saved_paths['combined'] = combined_path
 
-    return save_path
+    # Create a summary text file
+    summary_path = output_folder / "summary.txt"
+    with open(summary_path, 'w') as f:
+        f.write(f"{'='*60}\n")
+        f.write(f"PREDICTION SUMMARY\n")
+        f.write(f"{'='*60}\n\n")
+        f.write(f"Image: {Path(image_path).name}\n")
+        f.write(f"Model: {result['model_name'].upper()}\n")
+        f.write(f"Prediction: {result['pred_class']}\n")
+        f.write(f"Confidence: {result['confidence']*100:.2f}%\n\n")
+        f.write(f"{'='*60}\n")
+        f.write(f"TOP 5 PREDICTIONS\n")
+        f.write(f"{'='*60}\n\n")
+        for i, (class_name, prob) in enumerate(metadata['top_5_predictions'], 1):
+            f.write(f"{i}. {class_name:<30} {prob*100:>6.2f}%\n")
+        f.write(f"\n{'='*60}\n")
+        f.write(f"CAM METHODS GENERATED\n")
+        f.write(f"{'='*60}\n\n")
+        for cam_name in metadata['cam_methods_generated']:
+            f.write(f"  ✓ {cam_name}\n")
+        f.write(f"\n{'='*60}\n")
+        f.write(f"OUTPUT FILES\n")
+        f.write(f"{'='*60}\n\n")
+        f.write(f"Folder: {output_folder.relative_to(save_dir)}/\n")
+        f.write(f"  - original.png\n")
+        for cam_name in metadata['cam_methods_generated']:
+            filename = cam_name.lower().replace(' ', '_').replace('+', 'plus')
+            f.write(f"  - {filename}.png\n")
+        f.write(f"  - all_cams_combined.png\n")
+        f.write(f"  - prediction_results.json\n")
+        f.write(f"  - summary.txt\n")
+
+    saved_paths['summary'] = summary_path
+
+    print(f"\n📁 Results saved to: {output_folder.relative_to(save_dir)}")
+    print(f"   ✓ Original image")
+    print(f"   ✓ {len(successful_cams)} individual CAM visualizations")
+    print(f"   ✓ Combined 2x2 grid visualization")
+    print(f"   ✓ Prediction metadata (JSON)")
+    print(f"   ✓ Summary text report")
+
+    return saved_paths
 
 
 def visualize_all_models(results, image_path, save_dir="src/predictions"):
@@ -498,7 +585,8 @@ def main(image_path=None, model_path=None, image_name=None, model_name=None,
 
         save_path = visualize_all_cams(result, image_path, save_dir)
         if save_path:
-            print(f"✅ All CAM visualizations saved to: {save_path}")
+            print(
+                f"✅ All results saved to folder: {save_path.get('combined', 'N/A').parent if isinstance(save_path, dict) else save_path}")
 
         return result
 
