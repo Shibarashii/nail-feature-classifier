@@ -10,6 +10,10 @@ from src.data.dataloaders import get_class_names
 import argparse
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+from collections import defaultdict
+from numpy.linalg import pinv
+import json
 
 
 def preprocess_image(image_path):
@@ -253,6 +257,329 @@ def visualize_prediction(result, image_path, save_dir="src/predictions"):
     return save_path
 
 
+def load_confusion_matrix(model_path):
+    """
+    Load confusion matrix from model's evaluation metrics.
+
+    Args:
+        model_path (str/Path): Path to model weights file
+
+    Returns:
+        np.ndarray: Confusion matrix, or None if not found
+    """
+    model_path = Path(model_path)
+
+    # Try to find metrics.json
+    # For best_models: src/best_models/{model}/evaluation/metrics.json
+    # For output: src/output/{model}/{strategy}/{timestamp}/evaluation/metrics.json
+
+    if model_path.parent.parent.name == "best_models":
+        # best_models structure
+        metrics_path = model_path.parent / "evaluation" / "metrics.json"
+    else:
+        # output structure
+        metrics_path = model_path.parent / "evaluation" / "metrics.json"
+
+    if not metrics_path.exists():
+        print(f"⚠️  Warning: metrics.json not found at {metrics_path}")
+        return None
+
+    try:
+        with open(metrics_path, 'r') as f:
+            metrics = json.load(f)
+
+        # CHECK BOTH LOCATIONS: root level and nested in ml_metrics
+        if 'confusion_matrix' in metrics:
+            cm = np.array(metrics['confusion_matrix'])
+            return cm
+        elif 'ml_metrics' in metrics and 'confusion_matrix' in metrics['ml_metrics']:
+            # ⭐ ADD THIS: Handle nested structure from eval.py
+            cm = np.array(metrics['ml_metrics']['confusion_matrix'])
+            return cm
+        else:
+            print(f"⚠️  Warning: confusion_matrix not found in metrics.json")
+            return None
+
+    except Exception as e:
+        print(f"⚠️  Warning: Failed to load confusion matrix: {e}")
+        return None
+
+
+def infer_diseases(result, model_path, sex=None, age=None, csv_path="data/Disease Statistics/StatisticalDataset.csv"):
+    """
+    Infer potential systemic diseases based on nail feature predictions.
+
+    Args:
+        result (dict): Prediction result with probs and class_names
+        model_path (str/Path): Path to model weights (for loading confusion matrix)
+        sex (str, optional): 'male' or 'female'
+        age (float, optional): Age of the patient
+        csv_path (str): Path to the statistical dataset CSV
+
+    Returns:
+        dict: Disease probabilities and metadata
+    """
+    # Load CSV
+    csv_path = Path(csv_path)
+    if not csv_path.exists():
+        raise FileNotFoundError(f"Statistical dataset not found: {csv_path}")
+
+    df = pd.read_csv(csv_path)
+    df = df.fillna(value=pd.NA)
+
+    # Parse into dictionary
+    feature_to_diseases = defaultdict(list)
+    for _, row in df.iterrows():
+        f = row['Nail Feature']
+        d = row['Associated Disease/Condition']
+        p_fd = row['P(Nail | Disease) 0-1%']
+        p_d = row['P(Disease) 0-1%']
+
+        if pd.isna(p_d):
+            if d == 'No systemic disease':
+                p_d = 1.0
+            else:
+                continue
+
+        p_female = row['P(Disease) Sex_Female 0-1'] if not pd.isna(
+            row['P(Disease) Sex_Female 0-1']) else None
+        p_male = row['P(Disease) Sex_Male 0-1'] if not pd.isna(
+            row['P(Disease) Sex_Male 0-1']) else None
+        age_mean = row['Age (Mean)'] if not pd.isna(
+            row['Age (Mean)']) else None
+        age_low = row['Age_Low'] if not pd.isna(row['Age_Low']) else None
+        age_high = row['Age_High'] if not pd.isna(row['Age_High']) else None
+
+        feature_to_diseases[f].append({
+            'disease': d,
+            'p_fd': p_fd,
+            'p_d': p_d,
+            'p_female': p_female,
+            'p_male': p_male,
+            'age_low': age_low,
+            'age_high': age_high,
+            'age_mean': age_mean
+        })
+
+    # Get model predictions (already in 0-1 range)
+    confidence = {result['class_names'][i]: float(result['probs'][0][i])
+                  for i in range(len(result['class_names']))}
+
+    # Load confusion matrix from model's evaluation
+    confusion_matrix = load_confusion_matrix(model_path)
+
+    # Apply confusion matrix calibration if available
+    if confusion_matrix is not None:
+        try:
+            # Normalize confusion matrix
+            row_sums = confusion_matrix.sum(axis=1, keepdims=True)
+            # Avoid division by zero
+            row_sums = np.where(row_sums == 0, 1, row_sums)
+            conf = confusion_matrix / row_sums
+
+            # Get prediction vector in correct order
+            q = np.array([confidence.get(label, 0.0)
+                         for label in get_class_names()])
+
+            # Adjust predictions using confusion matrix calibration
+            adjusted_p = pinv(conf) @ q
+            adjusted_p = np.maximum(adjusted_p, 0.0)
+            if adjusted_p.sum() > 0:
+                adjusted_p /= adjusted_p.sum()
+
+            adjusted_confidence = {
+                get_class_names()[i]: adjusted_p[i] for i in range(len(get_class_names()))}
+            print("   ✓ Applied confusion matrix calibration")
+        except Exception as e:
+            print(f"   ⚠️  Calibration failed: {e}, using raw predictions")
+            adjusted_confidence = confidence
+    else:
+        print("   ⚠️  No confusion matrix found, using raw predictions")
+        adjusted_confidence = confidence
+
+    # Compute disease posteriors
+    disease_to_post = defaultdict(float)
+
+    for f, entries in feature_to_diseases.items():
+        p_f_image = adjusted_confidence.get(f, 0)
+        if p_f_image == 0:
+            continue
+
+        unnorm = {}
+        sum_unnorm = 0.0
+
+        for entry in entries:
+            d = entry['disease']
+            p_fd = entry['p_fd']
+            if pd.isna(p_fd) or p_fd == 0:
+                continue
+
+            p_d = entry['p_d']
+            p_female = entry['p_female']
+            p_male = entry['p_male']
+
+            # Calculate effective prior based on sex
+            if p_female is None and p_male is None:
+                effective_p_d = p_d
+            else:
+                if sex and sex.lower() == 'female':
+                    p_sex = p_female if p_female is not None else 0.0
+                elif sex and sex.lower() == 'male':
+                    p_sex = p_male if p_male is not None else 0.0
+                else:
+                    # No sex provided, use average
+                    if p_female is not None and p_male is not None:
+                        p_sex = (p_female + p_male) / 2
+                    elif p_female is not None:
+                        p_sex = p_female
+                    elif p_male is not None:
+                        p_sex = p_male
+                    else:
+                        p_sex = 0.0
+
+                # Determine if p_sex is conditional probability
+                if p_female is not None and p_male is not None:
+                    sum_p = p_female + p_male
+                    is_p_sex_d = abs(sum_p - 1) < 0.05
+                else:
+                    is_p_sex_d = False
+
+                if is_p_sex_d:
+                    effective_p_d = p_d * p_sex
+                else:
+                    effective_p_d = p_sex
+
+            if effective_p_d == 0:
+                continue
+
+            # Age adjustment
+            p_age_d = 1.0
+            low = entry['age_low']
+            high = entry['age_high']
+
+            if age is not None and low is not None and high is not None:
+                if high > low:
+                    if low <= age <= high:
+                        p_age_d = 1.0 / (high - low)
+                    else:
+                        p_age_d = 0.0
+                else:
+                    if age == low:
+                        p_age_d = 1.0
+                    else:
+                        p_age_d = 0.0
+
+            if p_age_d == 0:
+                continue
+
+            effective_prior = effective_p_d * p_age_d
+            unnorm_d = p_fd * effective_prior
+            unnorm[d] = unnorm_d
+            sum_unnorm += unnorm_d
+
+        if sum_unnorm > 0:
+            for d, u in unnorm.items():
+                p_d_f = u / sum_unnorm
+                disease_to_post[d] += p_d_f * p_f_image
+
+    # Normalize final posteriors
+    total_post = sum(disease_to_post.values())
+    if total_post > 0:
+        for d in disease_to_post:
+            disease_to_post[d] /= total_post
+
+    # Sort by probability
+    sorted_diseases = sorted(disease_to_post.items(),
+                             key=lambda x: x[1], reverse=True)
+
+    return {
+        'diseases': sorted_diseases,
+        'adjusted_confidence': adjusted_confidence,
+        'raw_confidence': confidence,
+        'sex': sex,
+        'age': age,
+        'calibration_applied': confusion_matrix is not None
+    }
+
+
+def save_disease_inference(inference_result, output_folder):
+    """
+    Save disease inference results to files.
+
+    Args:
+        inference_result (dict): Result from infer_diseases()
+        output_folder (Path): Folder to save results
+    """
+    # Save JSON
+    json_data = {
+        'patient_info': {
+            'sex': inference_result.get('sex'),
+            'age': inference_result.get('age')
+        },
+        'disease_probabilities': [
+            {'disease': d, 'probability': float(p)}
+            for d, p in inference_result['diseases']
+        ],
+        'adjusted_nail_features': {
+            k: float(v) for k, v in inference_result['adjusted_confidence'].items()
+        },
+        'raw_predictions': {
+            k: float(v) for k, v in inference_result['raw_confidence'].items()
+        }
+    }
+
+    json_path = output_folder / 'disease_inference.json'
+    with open(json_path, 'w') as f:
+        json.dump(json_data, f, indent=2)
+
+    # Save text report
+    report_path = output_folder / 'disease_report.txt'
+    with open(report_path, 'w') as f:
+        f.write("=" * 70 + "\n")
+        f.write("SYSTEMIC DISEASE INFERENCE REPORT\n")
+        f.write("=" * 70 + "\n\n")
+
+        if inference_result.get('sex') or inference_result.get('age'):
+            f.write("Patient Information:\n")
+            if inference_result.get('sex'):
+                f.write(f"  Sex: {inference_result['sex'].capitalize()}\n")
+            if inference_result.get('age'):
+                f.write(f"  Age: {inference_result['age']} years\n")
+            f.write("\n")
+
+        f.write("=" * 70 + "\n")
+        f.write("POTENTIAL SYSTEMIC DISEASES (Ranked by Probability)\n")
+        f.write("=" * 70 + "\n\n")
+
+        for i, (disease, prob) in enumerate(inference_result['diseases'][:10], 1):
+            f.write(f"{i:2d}. {disease:<50} {prob*100:>6.2f}%\n")
+
+        f.write("\n" + "=" * 70 + "\n")
+        f.write("CALIBRATED NAIL FEATURE PREDICTIONS\n")
+        f.write("=" * 70 + "\n\n")
+
+        sorted_features = sorted(
+            inference_result['adjusted_confidence'].items(),
+            key=lambda x: x[1],
+            reverse=True
+        )
+
+        for feature, prob in sorted_features:
+            if prob > 0.01:  # Only show features > 1%
+                f.write(f"  {feature:<35} {prob*100:>6.2f}%\n")
+
+        f.write("\n" + "=" * 70 + "\n")
+        f.write("DISCLAIMER\n")
+        f.write("=" * 70 + "\n\n")
+        f.write("This inference is based on statistical associations between nail\n")
+        f.write("features and systemic diseases. It is NOT a medical diagnosis.\n")
+        f.write("Please consult a healthcare professional for proper evaluation.\n")
+
+    print(f"   ✓ Disease inference report (JSON & TXT)")
+
+    return json_path, report_path
+
+
 def visualize_all_cams(result, image_path, save_dir="src/predictions"):
     """
     Visualize all CAM methods in a 2x2 grid and save individual CAMs + metadata.
@@ -301,7 +628,6 @@ def visualize_all_cams(result, image_path, save_dir="src/predictions"):
         saved_paths[cam_name] = cam_path
 
     # Save prediction metadata as JSON
-    import json
     metadata = {
         "image_name": Path(image_path).name,
         "model_name": result['model_name'],
@@ -565,6 +891,24 @@ def main(image_path=None, model_path=None, image_name=None, model_name=None,
             if save_path:
                 print(f"\n✅ Model comparison saved to: {save_path}")
 
+        if args.sex or args.age:
+            print("\n🧬 Computing disease inference for all models...")
+            image_name_clean = Path(image_path).name
+
+            for model_name, result in results.items():
+                if 'error' not in result:
+                    model_path = Path("src/best_models") / \
+                        model_name / "best_model.pth"
+                    inference_result = infer_diseases(
+                        result, model_path, sex=args.sex, age=args.age)
+
+                    output_folder = Path(save_dir) / \
+                        image_name_clean / model_name
+                    output_folder.mkdir(parents=True, exist_ok=True)
+
+                    save_disease_inference(inference_result, output_folder)
+
+            print("✅ All disease inferences saved")
         return results
 
     # Mode 2: Single model with all CAMs
@@ -587,7 +931,16 @@ def main(image_path=None, model_path=None, image_name=None, model_name=None,
         if save_path:
             print(
                 f"✅ All results saved to folder: {save_path.get('combined', 'N/A').parent if isinstance(save_path, dict) else save_path}")
+        if args.sex or args.age:
+            print("\n🧬 Computing disease inference...")
+            inference_result = infer_diseases(
+                result, model_path, sex=args.sex, age=args.age)
 
+            output_folder = save_path['combined'].parent if isinstance(
+                save_path, dict) else save_path.parent
+            json_path, report_path = save_disease_inference(
+                inference_result, output_folder)
+            print(f"✅ Disease inference saved")
         return result
 
     # Mode 3: Single model, single CAM (original behavior)
@@ -619,6 +972,25 @@ def main(image_path=None, model_path=None, image_name=None, model_name=None,
             save_path = visualize_prediction(result, image_path, save_dir)
             print(f"✅ Visualization saved to: {save_path}")
 
+        if args.sex or args.age:
+            print("\n🧬 Computing disease inference...")
+            inference_result = infer_diseases(
+                result,
+                model_path,
+                sex=args.sex,
+                age=args.age
+            )
+
+            # Create output folder matching visualize_all_cams structure
+            image_name_clean = Path(image_path).name
+            output_folder = Path(save_dir) / \
+                image_name_clean / result['model_name']
+            output_folder.mkdir(parents=True, exist_ok=True)
+
+            json_path, report_path = save_disease_inference(
+                inference_result, output_folder)
+            print(
+                f"✅ Disease inference saved: {json_path.relative_to(save_dir)}")
         return result
 
 
@@ -666,6 +1038,12 @@ Examples:
                         help="Generate all CAM visualization methods")
     parser.add_argument("--all-models", action="store_true",
                         help="Run prediction with all available models")
+
+    # Disease inference parameters
+    parser.add_argument("--sex", type=str, choices=['male', 'female'],
+                        help="Patient sex for disease inference (male/female)")
+    parser.add_argument("--age", type=float,
+                        help="Patient age for disease inference")
 
     args = parser.parse_args()
 
