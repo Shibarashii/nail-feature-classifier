@@ -44,29 +44,26 @@ def load_confusion_matrix(model_path):
         np.ndarray or None: Confusion matrix if found, None otherwise
     """
     model_path = Path(model_path)
+    metrics_path = model_path.parent / "evaluation" / "metrics.json"
 
-    # Determine metrics.json path based on directory structure
-    if model_path.parent.parent.name == "best_models":
-        metrics_path = model_path.parent / "evaluation" / "metrics.json"
-    else:
-        metrics_path = model_path.parent / "evaluation" / "metrics.json"
+    print(f"🔍 Looking for confusion matrix at: {metrics_path}")  # Debug line
 
     if not metrics_path.exists():
         print(f"⚠️  Warning: metrics.json not found at {metrics_path}")
         return None
-
     try:
         with open(metrics_path, 'r') as f:
             metrics = json.load(f)
 
-        # Check both root level and nested structure
         if 'confusion_matrix' in metrics:
-            return np.array(metrics['confusion_matrix'])
+            cm = np.array(metrics['confusion_matrix'])
         elif 'ml_metrics' in metrics and 'confusion_matrix' in metrics['ml_metrics']:
-            return np.array(metrics['ml_metrics']['confusion_matrix'])
+            cm = np.array(metrics['ml_metrics']['confusion_matrix'])
         else:
-            print(f"⚠️  Warning: confusion_matrix not found in metrics.json")
+            print(f"   ⚠️  confusion_matrix not found in metrics")
             return None
+
+        return cm
 
     except Exception as e:
         print(f"⚠️  Warning: Failed to load confusion matrix: {e}")
@@ -294,6 +291,17 @@ def _apply_calibration(confidence, model_path):
         return confidence
 
     try:
+        # DEBUG: Print the confusion matrix
+        print(
+            f"\n   ✓ Loaded confusion matrix (shape: {confusion_matrix.shape})")
+        print(f"\n   Raw Confusion Matrix:")
+        print(confusion_matrix)
+        print(f"\n   Normalized Confusion Matrix (row-wise):")
+        row_sums = confusion_matrix.sum(axis=0, keepdims=True)
+        row_sums = np.where(row_sums == -1, 1, row_sums)
+        normalized_cm = confusion_matrix / row_sums
+        print(normalized_cm)
+
         # Normalize confusion matrix
         row_sums = confusion_matrix.sum(axis=1, keepdims=True)
         row_sums = np.where(row_sums == 0, 1, row_sums)
