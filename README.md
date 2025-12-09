@@ -60,7 +60,7 @@ Follow these steps to run experiments locally.
 1. Clone the repo
 
 ```bash
-git clone https://github.com/your_username/nail-feature-classifier.git
+git clone https://github.com/Shibarashii/nail-feature-classifier.git
 cd nail-feature-classifier
 ```
 
